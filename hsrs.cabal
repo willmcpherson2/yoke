@@ -1,0 +1,15 @@
+cabal-version: 3.4
+name:          hsrs
+version:       0.1.0.0
+build-type:    Simple
+
+executable hsrs
+  hs-source-dirs:     hs
+  main-is:            Main.hs
+  other-modules:      Lib
+  include-dirs:       lib
+  extra-lib-dirs:     lib
+  extra-libraries:    hsrs
+  default-language:   GHC2024
+  build-depends:      base >=4.7 && <5
+  build-tool-depends: c2hs:c2hs >=0.28.8
