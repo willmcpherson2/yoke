@@ -22,6 +22,7 @@
         pkgs = import nixpkgs {
           inherit system overlays;
         };
+        llvm = pkgs.llvmPackages_18.llvm;
       in
       {
         devShells.default = pkgs.mkShell {
@@ -37,9 +38,11 @@
                 "rust-analyzer-preview"
               ];
             })
+            llvm
           ];
           shellHook = ''
             export LD_LIBRARY_PATH=lib:$LD_LIBRARY_PATH
+            export LLVM_SYS_181_PREFIX=${llvm.lib}
           '';
         };
       }
