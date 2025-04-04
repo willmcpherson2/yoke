@@ -22,7 +22,7 @@ clean:
 fmt:
 	cargo fmt
 	cabal-fmt -i *.cabal
-	ormolu -i $$(find hs -name "*.hs")
+	ormolu -i $$(find frontend -name "*.hs")
 
 .PHONY: update
 update:

@@ -1,10 +1,10 @@
 [package]
-name = "hsrs"
+name = "yoke"
 version = "0.1.0"
 edition = "2021"
 
 [lib]
-path = "rs/lib.rs"
+path = "backend/lib.rs"
 crate-type = ["staticlib"]
 
 [build-dependencies]

@@ -3,7 +3,7 @@ module Lib where
 import Foreign.Ptr
 import Foreign.C.Types
 
-#include "hsrs.h"
+#include "yoke.h"
 
 {#pointer *Point as PointPtr foreign newtype #}
 
