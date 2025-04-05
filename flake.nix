@@ -39,6 +39,7 @@
               ];
             })
             llvm
+            pkgs.libxml2
           ];
           shellHook = ''
             export LD_LIBRARY_PATH=lib:$LD_LIBRARY_PATH
