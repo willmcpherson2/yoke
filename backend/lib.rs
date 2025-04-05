@@ -1,5 +1,3 @@
-use std::collections::HashMap;
-
 use inkwell::{
   AddressSpace,
   builder::Builder,
