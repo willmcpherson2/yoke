@@ -9,7 +9,11 @@ executable yoke
   other-modules:      Lib
   include-dirs:       lib
   extra-lib-dirs:     lib
-  extra-libraries:    yoke
+  extra-libraries:
+    yoke
+    stdc++
+    ncurses
+
   default-language:   GHC2024
   build-depends:      base >=4.7 && <5
   build-tool-depends: c2hs:c2hs >=0.28.8

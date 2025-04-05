@@ -4,4 +4,8 @@ import Lib
 
 main :: IO ()
 main = do
-  pure ()
+  project <- newProject
+  unit <- newUnit project
+  addData unit 0 0 0
+  addMain unit
+  printUnit unit

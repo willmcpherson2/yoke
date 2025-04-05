@@ -17,12 +17,10 @@ type Arity = u16;
 
 type Index = u64;
 
-#[repr(C)]
 pub struct Project {
   context: Context,
 }
 
-#[repr(C)]
 pub struct Unit<'ctx> {
   context: &'ctx Context,
   module: Module<'ctx>,
@@ -67,6 +65,11 @@ pub extern "C" fn new_unit<'ctx>(project: &'ctx Project) -> Box<Unit<'ctx>> {
     .add_function("noop", noop_fun_type, Some(Linkage::External));
 
   Box::new(unit)
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn print_unit(unit: &Unit<'_>) {
+  println!("{}", unit.module.to_string());
 }
 
 #[unsafe(no_mangle)]
