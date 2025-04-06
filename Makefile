@@ -9,7 +9,8 @@ $(HACKAGE):
 
 .PHONY: build
 build: $(HACKAGE)
-	cargo build -Z unstable-options --artifact-dir=lib
+	cargo build
+	cp target/debug/libyoke.a lib
 	cabal build
 
 .PHONY: clean

@@ -1,12 +1,12 @@
 use std::path::Path;
 
 use inkwell::{
-  AddressSpace,
   builder::Builder,
   context::Context,
   module::{Linkage, Module},
   types::BasicTypeEnum,
   values::{BasicValueEnum, FunctionValue},
+  AddressSpace,
 };
 
 type Key = u64;
@@ -27,17 +27,17 @@ pub struct Unit<'ctx> {
   builder: Builder<'ctx>,
 }
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub extern "C" fn new_project() -> Box<Project> {
   Box::new(Project {
     context: Context::create(),
   })
 }
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub extern "C" fn free_project(_project: Box<Project>) {}
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub extern "C" fn new_unit<'ctx>(project: &'ctx Project) -> Box<Unit<'ctx>> {
   let path = Path::new("lib/rts.bc");
   let rts = Module::parse_bitcode_from_path(&path, &project.context).unwrap();
@@ -66,15 +66,15 @@ pub extern "C" fn new_unit<'ctx>(project: &'ctx Project) -> Box<Unit<'ctx>> {
   Box::new(unit)
 }
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub extern "C" fn free_unit(_unit: Box<Unit>) {}
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub extern "C" fn print_unit(unit: &Unit<'_>) {
   println!("{}", unit.module.to_string());
 }
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub extern "C" fn add_main(unit: &Unit<'_>) {
   let main_fun_type = unit.context.i32_type().fn_type(&[], false);
   let function = unit.module.add_function("main", main_fun_type, None);
@@ -86,7 +86,7 @@ pub extern "C" fn add_main(unit: &Unit<'_>) {
     .unwrap();
 }
 
-#[unsafe(no_mangle)]
+#[no_mangle]
 pub extern "C" fn add_data(unit: &mut Unit<'_>, name: Key, symbol: Symbol, arity: Arity) {
   let noop = unit.module.get_function("noop").unwrap();
   add_global(unit, noop, name, symbol, arity);

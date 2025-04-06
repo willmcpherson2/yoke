@@ -32,7 +32,7 @@
             pkgs.haskell.packages.ghc910.haskell-language-server
             pkgs.haskellPackages.cabal-fmt
             pkgs.haskellPackages.ormolu
-            (pkgs.rust-bin.nightly."2025-03-31".default.override {
+            (pkgs.rust-bin.stable."1.81.0".default.override {
               extensions = [
                 "rust-src"
                 "rust-analyzer-preview"

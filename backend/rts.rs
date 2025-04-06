@@ -1,5 +1,3 @@
-#![no_std]
-
 #[repr(C)]
 pub struct Term {
   fun: fn(&mut Term),
@@ -9,5 +7,7 @@ pub struct Term {
   capacity: u16,
 }
 
-#[unsafe(no_mangle)]
-pub extern "C" fn noop(_term: &Term) {}
+#[no_mangle]
+pub extern "C" fn noop(_term: &Term) {
+  println!("noop!");
+}
