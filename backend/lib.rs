@@ -1,9 +1,11 @@
+use std::path::Path;
+
 use inkwell::{
   AddressSpace,
   builder::Builder,
   context::Context,
   module::{Linkage, Module},
-  types::{BasicMetadataTypeEnum, BasicTypeEnum},
+  types::BasicTypeEnum,
   values::{BasicValueEnum, FunctionValue},
 };
 
@@ -37,9 +39,15 @@ pub extern "C" fn free_project(_project: Box<Project>) {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn new_unit<'ctx>(project: &'ctx Project) -> Box<Unit<'ctx>> {
+  let path = Path::new("lib/rts.bc");
+  let rts = Module::parse_bitcode_from_path(&path, &project.context).unwrap();
+  for fun in rts.get_functions() {
+    fun.set_linkage(Linkage::Internal);
+  }
+
   let unit = Unit {
     context: &project.context,
-    module: project.context.create_module("main"),
+    module: rts,
     builder: project.context.create_builder(),
   };
 
@@ -54,16 +62,6 @@ pub extern "C" fn new_unit<'ctx>(project: &'ctx Project) -> Box<Unit<'ctx>> {
     ],
     false,
   );
-
-  let noop_fun_type = unit.context.void_type().fn_type(
-    &[BasicMetadataTypeEnum::PointerType(
-      unit.context.ptr_type(AddressSpace::from(0)),
-    )],
-    false,
-  );
-  unit
-    .module
-    .add_function("noop", noop_fun_type, Some(Linkage::External));
 
   Box::new(unit)
 }
@@ -80,7 +78,7 @@ pub extern "C" fn print_unit(unit: &Unit<'_>) {
 pub extern "C" fn add_main(unit: &Unit<'_>) {
   let main_fun_type = unit.context.i32_type().fn_type(&[], false);
   let function = unit.module.add_function("main", main_fun_type, None);
-  let block = unit.context.append_basic_block(function, "entry");
+  let block = unit.context.append_basic_block(function, "start");
   unit.builder.position_at_end(block);
   unit
     .builder
