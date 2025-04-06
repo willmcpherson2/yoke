@@ -1,9 +1,22 @@
 module Lib where
 
+import Data.Word
 import Foreign.Ptr
 import Foreign.C.Types
 
 #include "yoke.h"
+
+type Key = Word64
+
+type Symbol = Word32
+
+type Arity = Word16
+
+{#typedef uint64_t Key #}
+
+{#typedef uint32_t Symbol #}
+
+{#typedef uint16_t Arity #}
 
 {#pointer *Project as ProjectPtr foreign newtype #}
 
@@ -17,4 +30,4 @@ import Foreign.C.Types
 
 {#fun add_main as ^ { `UnitPtr' } -> `()' #}
 
-{#fun add_data as ^ { `UnitPtr', `CULong', `CUInt', `CUShort' } -> `()' #}
+{#fun add_data as ^ { `UnitPtr', `Key', `Symbol', `Arity' } -> `()' #}
