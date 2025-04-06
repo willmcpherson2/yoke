@@ -6,7 +6,7 @@ use inkwell::{
   module::{Linkage, Module},
   types::BasicTypeEnum,
   values::{BasicValueEnum, FunctionValue},
-  AddressSpace,
+  AddressSpace, OptimizationLevel,
 };
 
 type Key = u64;
@@ -111,6 +111,17 @@ fn add_global(unit: &mut Unit<'_>, fun: FunctionValue, name: Key, symbol: Symbol
   global.set_initializer(&struct_val);
 }
 
+#[no_mangle]
+pub extern "C" fn jit(unit: &Unit<'_>) -> i32 {
+  let engine = unit
+    .module
+    .create_jit_execution_engine(OptimizationLevel::None)
+    .unwrap();
+  type MainFun = unsafe extern "C" fn() -> i32;
+  let main_fun = unsafe { engine.get_function::<MainFun>("main") }.unwrap();
+  return unsafe { main_fun.call() };
+}
+
 #[cfg(test)]
 mod tests {
   use super::*;
@@ -124,6 +135,7 @@ mod tests {
     if let Err(e) = unit.module.verify() {
       eprintln!("{}", e.to_string());
     };
-    println!("{}", unit.module.to_string());
+    let result = jit(&unit);
+    assert_eq!(result, 42);
   }
 }

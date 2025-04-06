@@ -1,5 +1,6 @@
 module Lib where
 
+import Data.Int
 import Data.Word
 import Foreign.Ptr
 import Foreign.C.Types
@@ -35,3 +36,5 @@ type Arity = Word16
 {# fun add_main as ^ { `UnitPtr' } -> `()' #}
 
 {# fun add_data as ^ { `UnitPtr', `Key', `Symbol', `Arity' } -> `()' #}
+
+{# fun jit as ^ { `UnitPtr' } -> `Int32' #}

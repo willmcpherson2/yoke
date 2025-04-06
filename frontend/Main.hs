@@ -8,6 +8,7 @@ main = do
   unit <- newUnit project
   addData unit 0 0 0
   addMain unit
-  printUnit unit
+  result <- jit unit
+  putStrLn $ "result: " <> show result
   freeUnit unit
   freeProject project

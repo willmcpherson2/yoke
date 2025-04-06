@@ -13,6 +13,7 @@ executable yoke
     yoke
     stdc++
     ncurses
+    z
 
   default-language:   GHC2024
   build-depends:      base >=4.7 && <5

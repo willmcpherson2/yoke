@@ -40,6 +40,7 @@
             })
             llvm
             pkgs.libxml2
+            pkgs.zlib
           ];
           shellHook = ''
             export LD_LIBRARY_PATH=lib:$LD_LIBRARY_PATH
