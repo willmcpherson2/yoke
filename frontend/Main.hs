@@ -9,3 +9,5 @@ main = do
   addData unit 0 0 0
   addMain unit
   printUnit unit
+  freeUnit unit
+  freeProject project

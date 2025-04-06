@@ -33,6 +33,9 @@ pub extern "C" fn new_project() -> Box<Project> {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn free_project(_project: Box<Project>) {}
+
+#[unsafe(no_mangle)]
 pub extern "C" fn new_unit<'ctx>(project: &'ctx Project) -> Box<Unit<'ctx>> {
   let unit = Unit {
     context: &project.context,
@@ -64,6 +67,9 @@ pub extern "C" fn new_unit<'ctx>(project: &'ctx Project) -> Box<Unit<'ctx>> {
 
   Box::new(unit)
 }
+
+#[unsafe(no_mangle)]
+pub extern "C" fn free_unit(_unit: Box<Unit>) {}
 
 #[unsafe(no_mangle)]
 pub extern "C" fn print_unit(unit: &Unit<'_>) {

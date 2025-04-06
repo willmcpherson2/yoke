@@ -24,7 +24,11 @@ type Arity = Word16
 
 {# fun new_project as ^ {} -> `ProjectPtr' #}
 
+{# fun free_project as ^ { `ProjectPtr' } -> `()' #}
+
 {# fun new_unit as ^ { `ProjectPtr' } -> `UnitPtr' #}
+
+{# fun free_unit as ^ { `UnitPtr' } -> `()' #}
 
 {# fun print_unit as ^ { `UnitPtr' } -> `()' #}
 
