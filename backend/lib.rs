@@ -41,9 +41,8 @@ pub extern "C" fn free_project(_project: Box<Project>) {}
 pub extern "C" fn new_unit<'ctx>(project: &'ctx Project) -> Box<Unit<'ctx>> {
   let path = Path::new("lib/rts.bc");
   let rts = Module::parse_bitcode_from_path(&path, &project.context).unwrap();
-  for fun in rts.get_functions() {
-    fun.set_linkage(Linkage::Internal);
-  }
+
+  rts.get_function("noop").unwrap().set_linkage(Linkage::Internal);
 
   let unit = Unit {
     context: &project.context,
