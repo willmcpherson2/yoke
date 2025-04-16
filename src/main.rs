@@ -1,13 +1,23 @@
 mod lir;
 mod rts;
 
-use lir::{compile, Prog};
+use lir::*;
 
 fn main() {
     let prog = Prog {
-        globals: vec![],
+        globals: vec![Global {
+            name: "True",
+            symbol: 1,
+            arity: 0,
+        }],
         funs: vec![],
-        main: vec![],
+        main: vec![
+            Op::LoadGlobal(LoadGlobal {
+                name: "True",
+                global: "True",
+            }),
+            Op::ReturnSymbol(ReturnSymbol { var: "True" }),
+        ],
     };
 
     compile(prog);
