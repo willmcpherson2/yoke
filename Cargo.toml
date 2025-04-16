@@ -3,12 +3,5 @@ name = "yoke"
 version = "0.1.0"
 edition = "2021"
 
-[lib]
-path = "backend/lib.rs"
-crate-type = ["staticlib"]
-
-[build-dependencies]
-cbindgen = "0.28.0"
-
 [dependencies]
 inkwell = { version = "0.5.0", features = ["llvm18-0"] }
