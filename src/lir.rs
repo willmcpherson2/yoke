@@ -122,16 +122,33 @@ struct Unit<'ctx> {
     builder: Builder<'ctx>,
     term_type: StructType<'ctx>,
     fun_type: FunctionType<'ctx>,
-    locals: HashMap<&'ctx str, PointerValue<'ctx>>,
+    locals: Vec<HashMap<&'ctx str, PointerValue<'ctx>>>,
 }
 
 impl<'ctx> Unit<'ctx> {
+    fn add_scope(&mut self) {
+        self.locals.push(HashMap::new())
+    }
+
     fn define(&mut self, name: &'ctx str, value: PointerValue<'ctx>) {
-        self.locals.insert(name, value);
+        self.locals.last_mut().unwrap().insert(name, value);
     }
 
     fn lookup(&self, var: &str) -> PointerValue<'ctx> {
-        self.locals.get(var).unwrap().clone()
+        for scope in self.locals.iter().rev() {
+            if let Some(local) = scope.get(var) {
+                return local.clone();
+            }
+        }
+        panic!("no local with name: {}", var)
+    }
+
+    fn clear_locals(&mut self) {
+        self.locals.clear()
+    }
+
+    fn clear_scope(&mut self) {
+        self.locals.last_mut().unwrap().clear()
     }
 }
 
@@ -171,7 +188,7 @@ pub fn compile(prog: Prog) {
         builder,
         term_type,
         fun_type,
-        locals: HashMap::new(),
+        locals: Vec::new(),
     };
 
     prog.globals
@@ -208,6 +225,14 @@ fn compile_fun(unit: &mut Unit, fun: Fun) {
     let block = unit.context.append_basic_block(function, "start");
     unit.builder.position_at_end(block);
 
+    unit.clear_locals();
+    unit.add_scope();
+
+    let BasicValueEnum::PointerValue(arg) = function.get_first_param().unwrap() else {
+        panic!()
+    };
+    unit.define(fun.arg_name, arg);
+
     compile_block(unit, fun.block);
 }
 
@@ -216,6 +241,9 @@ fn compile_main(unit: &mut Unit, main: Block) {
     let main_fun = unit.module.add_function("main", main_fun_type, None);
     let block = unit.context.append_basic_block(main_fun, "start");
     unit.builder.position_at_end(block);
+
+    unit.clear_locals();
+    unit.add_scope();
 
     compile_block(unit, main);
 }
