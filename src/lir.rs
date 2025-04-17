@@ -152,7 +152,19 @@ impl<'ctx> Unit<'ctx> {
     }
 }
 
-pub fn compile(prog: Prog) {
+pub struct Config {
+    pub target: Target,
+}
+
+pub enum Target {
+    Jit,
+}
+
+pub enum Output {
+    Jit(i32),
+}
+
+pub fn compile(prog: Prog, config: Config) -> Output {
     let context = Context::create();
     let path = Path::new("target/rts.bc");
     let module = Module::parse_bitcode_from_path(&path, &context).unwrap();
@@ -205,12 +217,12 @@ pub fn compile(prog: Prog) {
     println!("{}", s);
 
     if let Err(e) = unit.module.verify() {
-        eprintln!("LLVM verify error:\n{}", e.to_string());
-        return;
+        panic!("LLVM verify error:\n{}", e.to_string());
     };
 
-    let result = jit(&unit);
-    println!("result: {}", result);
+    match config.target {
+        Target::Jit => Output::Jit(jit(&unit)),
+    }
 }
 
 fn compile_global(unit: &mut Unit, global: Global) {
@@ -336,4 +348,43 @@ fn add_global(unit: &mut Unit, fun: FunctionValue, name: Name, symbol: Symbol, a
     global.set_constant(true);
     global.set_linkage(Linkage::Internal);
     global.set_initializer(&struct_val);
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    macro_rules! test {
+        ($prog:expr, $expected:expr) => {
+            let Output::Jit(result) = compile(
+                $prog,
+                Config {
+                    target: Target::Jit,
+                },
+            );
+            assert_eq!(result, $expected);
+        };
+    }
+
+    #[test]
+    fn test_return_symbol() {
+        test!(
+            Prog {
+                globals: vec![Global {
+                    name: "True",
+                    symbol: 1,
+                    arity: 0,
+                }],
+                funs: vec![],
+                main: vec![
+                    Op::LoadGlobal(LoadGlobal {
+                        name: "True",
+                        global: "True",
+                    }),
+                    Op::ReturnSymbol(ReturnSymbol { var: "True" }),
+                ],
+            },
+            1
+        );
+    }
 }
