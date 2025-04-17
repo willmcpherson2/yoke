@@ -59,7 +59,7 @@ pub struct LoadGlobal {
 pub struct LoadArg {
     pub name: Name,
     pub var: Name,
-    pub index: usize,
+    pub index: u64,
 }
 
 pub struct NewApp {
@@ -228,9 +228,7 @@ fn compile_fun(unit: &mut Unit, fun: Fun) {
     unit.clear_locals();
     unit.add_scope();
 
-    let BasicValueEnum::PointerValue(arg) = function.get_first_param().unwrap() else {
-        panic!()
-    };
+    let arg = function.get_first_param().unwrap().into_pointer_value();
     unit.define(fun.arg_name, arg);
 
     compile_block(unit, fun.block);
@@ -265,7 +263,30 @@ fn compile_op(unit: &mut Unit<'_>, op: Op) {
 
             unit.define(name, alloca);
         }
-        Op::LoadArg(_) => todo!(),
+        Op::LoadArg(LoadArg { name, var, index }) => {
+            let term = unit.lookup(var);
+
+            let args_field = unit
+                .builder
+                .build_load(unit.term_type, term, "")
+                .unwrap()
+                .into_pointer_value();
+            let arg_index = unit.context.i64_type().const_int(index, false);
+            let arg_ptr = unsafe {
+                unit.builder
+                    .build_gep(unit.term_type, args_field, &[arg_index], "")
+                    .unwrap()
+            };
+            let arg = unit
+                .builder
+                .build_load(unit.term_type, arg_ptr, "")
+                .unwrap()
+                .into_pointer_value();
+            let arg_alloca = unit.builder.build_alloca(unit.term_type, "").unwrap();
+            unit.builder.build_store(arg, arg_alloca).unwrap();
+
+            unit.define(name, arg_alloca);
+        }
         Op::NewApp(_) => todo!(),
         Op::NewPartial(_) => todo!(),
         Op::ApplyPartial(_) => todo!(),
@@ -276,11 +297,11 @@ fn compile_op(unit: &mut Unit<'_>, op: Op) {
         Op::Return(_) => todo!(),
         Op::ReturnSymbol(ReturnSymbol { var }) => {
             let term = unit.lookup(var);
-            let BasicValueEnum::StructValue(term_load) =
-                unit.builder.build_load(unit.term_type, term, "").unwrap()
-            else {
-                panic!()
-            };
+            let term_load = unit
+                .builder
+                .build_load(unit.term_type, term, "")
+                .unwrap()
+                .into_struct_value();
             let symbol = unit.builder.build_extract_value(term_load, 2, "").unwrap();
             unit.builder.build_return(Some(&symbol)).unwrap();
         }
