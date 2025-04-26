@@ -30,19 +30,13 @@
             llvm
             pkgs.libffi
             pkgs.libxml2
-            (pkgs.rust-bin.stable."1.81.0".default.override {
+            (pkgs.rust-bin.nightly."2024-07-31".default.override {
               extensions = [
                 "rust-src"
                 "rust-analyzer-preview"
+                "miri"
               ];
             })
-            # (pkgs.rust-bin.nightly."2025-04-03".default.override {
-            #   extensions = [
-            #     "rust-src"
-            #     "rust-analyzer-preview"
-            #     "miri"
-            #   ];
-            # })
           ];
         };
       }
