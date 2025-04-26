@@ -3,10 +3,13 @@ use inkwell::{
     context::Context,
     module::{Linkage, Module},
     types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
-    values::{BasicValueEnum, FunctionValue, PointerValue},
+    values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace, OptimizationLevel,
 };
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::{HashMap, HashSet},
+    path::Path,
+};
 
 pub struct Config {
     pub target: Target,
@@ -36,13 +39,16 @@ impl Prog {
     pub fn compile(&self, config: Config) -> Output {
         let context = Context::create();
         let path = Path::new("target/rts.bc");
-        let module = Module::parse_bitcode_from_path(&path, &context).unwrap();
+        let module = Module::parse_bitcode_from_path(path, &context).unwrap();
         let builder = context.create_builder();
 
-        module
-            .get_function("noop")
-            .unwrap()
-            .set_linkage(Linkage::Internal);
+        let rts_fun_names = HashSet::from([c"noop", c"copy", c"free_args", c"free_term"]);
+        let rts_funs = module
+            .get_functions()
+            .filter(|fun| rts_fun_names.contains(fun.get_name()));
+        for fun in rts_funs {
+            fun.set_linkage(Linkage::Internal)
+        }
 
         let term_type = context.opaque_struct_type("Term");
         term_type.set_body(
@@ -80,12 +86,11 @@ impl Prog {
 
         self.compile_main(&mut unit);
 
-        let s = unit.module.print_to_string().to_string();
-        println!("{}", s);
-
         if let Err(e) = unit.module.verify() {
             panic!("LLVM verify error:\n{}", e.to_string());
         };
+
+        unit.print();
 
         match config.target {
             Target::Jit => Output::Jit(unit.jit()),
@@ -144,7 +149,7 @@ impl Fun {
     }
 }
 
-pub struct Block(Vec<Op>);
+pub struct Block(pub Vec<Op>);
 
 impl Block {
     fn compile(&self, unit: &mut Unit) {
@@ -273,9 +278,37 @@ impl Op {
             Op::NewApp(_) => todo!(),
             Op::NewPartial(_) => todo!(),
             Op::ApplyPartial(_) => todo!(),
-            Op::Copy(_) => todo!(),
-            Op::FreeArgs(_) => todo!(),
-            Op::FreeTerm(_) => todo!(),
+            Op::Copy(Copy { name, var }) => {
+                let dest = unit.builder.build_alloca(unit.term_type, "").unwrap();
+                let src = unit.lookup(var);
+                let copy = unit.module.get_function("copy").unwrap();
+                unit.builder
+                    .build_call(
+                        copy,
+                        &[
+                            BasicMetadataValueEnum::PointerValue(dest),
+                            BasicMetadataValueEnum::PointerValue(src),
+                        ],
+                        "",
+                    )
+                    .unwrap();
+
+                unit.define(name, dest);
+            }
+            Op::FreeArgs(FreeArgs { var }) => {
+                let term = unit.lookup(var);
+                let free_args = unit.module.get_function("free_args").unwrap();
+                unit.builder
+                    .build_call(free_args, &[BasicMetadataValueEnum::PointerValue(term)], "")
+                    .unwrap();
+            }
+            Op::FreeTerm(FreeTerm { var }) => {
+                let term = unit.lookup(var);
+                let free_term = unit.module.get_function("free_term").unwrap();
+                unit.builder
+                    .build_call(free_term, &[BasicMetadataValueEnum::PointerValue(term)], "")
+                    .unwrap();
+            }
             Op::Eval(_) => todo!(),
             Op::Return(_) => todo!(),
             Op::ReturnSymbol(ReturnSymbol { var }) => {
@@ -314,7 +347,7 @@ impl<'ctx> Unit<'ctx> {
     fn lookup(&self, var: &str) -> PointerValue<'ctx> {
         for scope in self.locals.iter().rev() {
             if let Some(local) = scope.get(var) {
-                return local.clone();
+                return *local;
             }
         }
         panic!("no local with name: {}", var)
@@ -339,9 +372,9 @@ impl<'ctx> Unit<'ctx> {
             BasicValueEnum::IntValue(self.context.i16_type().const_int(arity.into(), false)),
         ]);
 
-        let global =
-            self.module
-                .add_global(term_type, Some(AddressSpace::from(0)), &name.to_string());
+        let global = self
+            .module
+            .add_global(term_type, Some(AddressSpace::from(0)), name);
         global.set_constant(true);
         global.set_linkage(Linkage::Internal);
         global.set_initializer(&struct_val);
@@ -354,7 +387,12 @@ impl<'ctx> Unit<'ctx> {
             .unwrap();
         type MainFun = unsafe extern "C" fn() -> i32;
         let main_fun = unsafe { engine.get_function::<MainFun>("main") }.unwrap();
-        return unsafe { main_fun.call() };
+        unsafe { main_fun.call() }
+    }
+
+    fn print(&self) {
+        let s = self.module.print_to_string().to_string();
+        println!("{}", s);
     }
 }
 
@@ -387,6 +425,33 @@ mod test {
                         global: "True",
                     }),
                     Op::ReturnSymbol(ReturnSymbol { var: "True" }),
+                ]),
+            },
+            1
+        );
+    }
+
+    #[test]
+    fn test_copy() {
+        test!(
+            Prog {
+                globals: vec![Global {
+                    name: "True",
+                    symbol: 1,
+                    arity: 0,
+                }],
+                funs: vec![],
+                main: Block(vec![
+                    Op::LoadGlobal(LoadGlobal {
+                        name: "True",
+                        global: "True",
+                    }),
+                    Op::Copy(Copy {
+                        name: "x",
+                        var: "True",
+                    }),
+                    Op::FreeTerm(FreeTerm { var: "x" }),
+                    Op::ReturnSymbol(ReturnSymbol { var: "x" }),
                 ]),
             },
             1

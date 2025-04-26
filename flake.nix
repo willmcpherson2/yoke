@@ -36,6 +36,13 @@
                 "rust-analyzer-preview"
               ];
             })
+            # (pkgs.rust-bin.nightly."2025-04-03".default.override {
+            #   extensions = [
+            #     "rust-src"
+            #     "rust-analyzer-preview"
+            #     "miri"
+            #   ];
+            # })
           ];
         };
       }
