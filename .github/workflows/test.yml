@@ -9,6 +9,7 @@ jobs:
     - uses: actions/checkout@v4
     - uses: cachix/install-nix-action@v31
     - run: nix flake check
+    - run: nix develop -c make
     - run: nix develop -c cargo build
     - run: nix develop -c cargo test
-    - run: nix develop -c cargo miri test rts::test
+    - run: nix develop -c cargo miri test -p rts

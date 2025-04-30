@@ -1,18 +1,6 @@
 mod lir;
-mod rts;
 
 use lir::*;
-
-macro_rules! test {
-    ($prog:expr, $expected:expr) => {
-        let Output::Jit(result) = $prog.compile(Config {
-            target: Target::Jit,
-        }) else {
-            panic!()
-        };
-        assert_eq!(result, $expected);
-    };
-}
 
 fn main() {
     let prog = Prog {
@@ -43,11 +31,12 @@ fn main() {
                 var: "F",
                 args: vec!["A"],
             }),
+            Op::FreeTerm(FreeTerm { var: "result" }),
             Op::ReturnSymbol(ReturnSymbol { var: "result" }),
         ]),
     };
 
-    prog.compile(Config {
+    dbg!(prog.compile(Config {
         target: Target::Binary,
-    });
+    }));
 }

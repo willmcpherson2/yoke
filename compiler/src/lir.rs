@@ -1,6 +1,7 @@
 use inkwell::{
     builder::Builder,
     context::Context,
+    memory_buffer::MemoryBuffer,
     module::{Linkage, Module},
     targets::{self, InitializationConfig},
     types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
@@ -12,15 +13,20 @@ use std::{
     path::Path,
 };
 
+const RTS_BC: &[u8] = include_bytes!("../../target/release/deps/rts.bc");
+
+#[derive(Debug)]
 pub struct Config {
     pub target: Target,
 }
 
+#[derive(Debug)]
 pub enum Target {
     Jit,
     Binary,
 }
 
+#[derive(Debug)]
 pub enum Output {
     Jit(i32),
     Binary,
@@ -32,6 +38,7 @@ pub type Symbol = u32;
 
 pub type Arity = u16;
 
+#[derive(Debug)]
 pub struct Prog {
     pub globals: Vec<Global>,
     pub funs: Vec<Fun>,
@@ -41,8 +48,8 @@ pub struct Prog {
 impl Prog {
     pub fn compile(&self, config: Config) -> Output {
         let context = Context::create();
-        let path = Path::new("target/rts.bc");
-        let module = Module::parse_bitcode_from_path(path, &context).unwrap();
+        let buffer = MemoryBuffer::create_from_memory_range(RTS_BC, "rts");
+        let module = Module::parse_bitcode_from_buffer(&buffer, &context).unwrap();
         let builder = context.create_builder();
 
         let rts_fun_names =
@@ -119,6 +126,7 @@ impl Prog {
     }
 }
 
+#[derive(Debug)]
 pub struct Global {
     pub name: Name,
     pub symbol: Symbol,
@@ -132,6 +140,7 @@ impl Global {
     }
 }
 
+#[derive(Debug)]
 pub struct Fun {
     pub name: Name,
     pub arg_name: Name,
@@ -161,6 +170,7 @@ impl Fun {
     }
 }
 
+#[derive(Debug)]
 pub struct Block(pub Vec<Op>);
 
 impl Block {
@@ -169,6 +179,7 @@ impl Block {
     }
 }
 
+#[derive(Debug)]
 pub enum Op {
     LoadGlobal(LoadGlobal),
     LoadArg(LoadArg),
@@ -184,66 +195,79 @@ pub enum Op {
     Switch(Switch),
 }
 
+#[derive(Debug)]
 pub struct LoadGlobal {
     pub name: Name,
     pub global: Name,
 }
 
+#[derive(Debug)]
 pub struct LoadArg {
     pub name: Name,
     pub var: Name,
     pub index: u64,
 }
 
+#[derive(Debug)]
 pub struct NewApp {
     pub name: Name,
     pub var: Name,
     pub args: Vec<Name>,
 }
 
+#[derive(Debug)]
 pub struct NewPartial {
     pub name: Name,
     pub var: Name,
     pub args: Vec<Name>,
 }
 
+#[derive(Debug)]
 pub struct ApplyPartial {
     pub name: Name,
     pub var: Name,
     pub args: Vec<Name>,
 }
 
+#[derive(Debug)]
 pub struct Copy {
     pub name: Name,
     pub var: Name,
 }
 
+#[derive(Debug)]
 pub struct FreeArgs {
     pub var: Name,
 }
 
+#[derive(Debug)]
 pub struct FreeTerm {
     pub var: Name,
 }
 
+#[derive(Debug)]
 pub struct Eval {
     pub name: Name,
     pub var: Name,
 }
 
+#[derive(Debug)]
 pub struct Return {
     pub var: Name,
 }
 
+#[derive(Debug)]
 pub struct ReturnSymbol {
     pub var: Name,
 }
 
+#[derive(Debug)]
 pub struct Switch {
     pub var: Name,
     pub cases: Vec<Case>,
 }
 
+#[derive(Debug)]
 pub struct Case {
     pub symbol: Symbol,
     pub block: Block,
@@ -403,6 +427,7 @@ impl Op {
     }
 }
 
+#[derive(Debug)]
 struct Unit<'ctx> {
     context: &'ctx Context,
     module: Module<'ctx>,

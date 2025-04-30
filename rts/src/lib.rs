@@ -1,7 +1,5 @@
-use std::{
-    alloc::{alloc, dealloc, Layout},
-    ptr::copy_nonoverlapping,
-};
+use libc::{c_void, free, malloc};
+use std::{mem::size_of, ptr::copy_nonoverlapping};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -40,7 +38,7 @@ pub extern "C" fn copy(dest: &mut Term, src: &Term) {
 
 #[no_mangle]
 pub extern "C" fn free_args(term: &mut Term) {
-    dealloc_terms(term.args, term.capacity as usize);
+    dealloc_terms(term.args);
 }
 
 #[no_mangle]
@@ -69,58 +67,46 @@ fn arg_mut(term: &mut Term, i: usize) -> &mut Term {
     as_mut(arg)
 }
 
-fn terms_layout(capacity: usize) -> Layout {
-    let size = std::mem::size_of::<Term>() * capacity;
-    let align = std::mem::align_of::<Term>();
-    unsafe { Layout::from_size_align(size, align).unwrap_unchecked() }
-}
-
 fn alloc_terms(capacity: usize) -> *mut Term {
-    let layout = terms_layout(capacity);
-    (unsafe { alloc(layout) } as *mut Term)
+    let size = capacity * size_of::<Term>();
+    (unsafe { malloc(size) } as *mut Term)
 }
 
-fn dealloc_terms(terms: *mut Term, capacity: usize) {
-    if terms.is_null() {
-        return;
-    }
-
-    let layout = terms_layout(capacity);
-    unsafe { dealloc(terms as *mut u8, layout) };
-}
-
-#[derive(Clone, Debug)]
-struct ShowTerm {
-    fun: usize,
-    args_ptr: usize,
-    args: Vec<ShowTerm>,
-    symbol: u32,
-    length: u16,
-    capacity: u16,
-}
-
-fn show_term(term: &Term) -> ShowTerm {
-    let mut args = vec![];
-    for i in 0..term.length as usize {
-        let arg = as_ref(arg(term, i));
-        args.push(show_term(arg));
-    }
-
-    ShowTerm {
-        fun: term.fun as usize,
-        args_ptr: term.args as usize,
-        args,
-        symbol: term.symbol,
-        length: term.length,
-        capacity: term.capacity,
-    }
+fn dealloc_terms(terms: *mut Term) {
+    unsafe { free(terms as *mut c_void) };
 }
 
 #[cfg(test)]
 mod test {
+    use super::*;
     use std::ptr::null_mut;
 
-    use super::*;
+    #[derive(Clone, Debug)]
+    struct ShowTerm {
+        fun: usize,
+        args_ptr: usize,
+        args: Vec<ShowTerm>,
+        symbol: u32,
+        length: u16,
+        capacity: u16,
+    }
+
+    fn show_term(term: &Term) -> ShowTerm {
+        let mut args = vec![];
+        for i in 0..term.length as usize {
+            let arg = as_ref(arg(term, i));
+            args.push(show_term(arg));
+        }
+
+        ShowTerm {
+            fun: term.fun as usize,
+            args_ptr: term.args as usize,
+            args,
+            symbol: term.symbol,
+            length: term.length,
+            capacity: term.capacity,
+        }
+    }
 
     #[test]
     fn test_rts_free_term() {
