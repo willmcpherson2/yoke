@@ -2,6 +2,7 @@ use inkwell::{
     builder::Builder,
     context::Context,
     module::{Linkage, Module},
+    targets::{self, InitializationConfig},
     types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
     values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace, OptimizationLevel,
@@ -17,10 +18,12 @@ pub struct Config {
 
 pub enum Target {
     Jit,
+    Binary,
 }
 
 pub enum Output {
     Jit(i32),
+    Binary,
 }
 
 pub type Name = &'static str;
@@ -42,7 +45,8 @@ impl Prog {
         let module = Module::parse_bitcode_from_path(path, &context).unwrap();
         let builder = context.create_builder();
 
-        let rts_fun_names = HashSet::from([c"noop", c"copy", c"free_args", c"free_term"]);
+        let rts_fun_names =
+            HashSet::from([c"noop", c"new_app", c"copy", c"free_args", c"free_term"]);
         let rts_funs = module
             .get_functions()
             .filter(|fun| rts_fun_names.contains(fun.get_name()));
@@ -75,6 +79,7 @@ impl Prog {
             builder,
             term_type,
             fun_type,
+            arg: None,
             locals: Vec::new(),
         };
 
@@ -94,6 +99,10 @@ impl Prog {
 
         match config.target {
             Target::Jit => Output::Jit(unit.jit()),
+            Target::Binary => {
+                unit.binary();
+                Output::Binary
+            }
         }
     }
 
@@ -143,9 +152,12 @@ impl Fun {
         unit.add_scope();
 
         let arg = fun.get_first_param().unwrap().into_pointer_value();
+        unit.arg = Some(arg);
         unit.define(self.arg_name, arg);
 
         self.block.compile(unit);
+
+        unit.add_global(fun, self.name, self.symbol, self.arity);
     }
 }
 
@@ -239,7 +251,7 @@ pub struct Case {
 
 impl Op {
     fn compile(&self, unit: &mut Unit) {
-        match self {
+        match *self {
             Op::LoadGlobal(LoadGlobal { name, global }) => {
                 let global = unit.module.get_global(global).unwrap();
                 let global = unit
@@ -254,12 +266,17 @@ impl Op {
             Op::LoadArg(LoadArg { name, var, index }) => {
                 let term = unit.lookup(var);
 
-                let args_field = unit
+                let term_load = unit
                     .builder
                     .build_load(unit.term_type, term, "")
                     .unwrap()
+                    .into_struct_value();
+                let args_field = unit
+                    .builder
+                    .build_extract_value(term_load, 1, "")
+                    .unwrap()
                     .into_pointer_value();
-                let arg_index = unit.context.i64_type().const_int(*index, false);
+                let arg_index = unit.context.i64_type().const_int(index, false);
                 let arg_ptr = unsafe {
                     unit.builder
                         .build_gep(unit.term_type, args_field, &[arg_index], "")
@@ -268,14 +285,50 @@ impl Op {
                 let arg = unit
                     .builder
                     .build_load(unit.term_type, arg_ptr, "")
-                    .unwrap()
-                    .into_pointer_value();
+                    .unwrap();
                 let arg_alloca = unit.builder.build_alloca(unit.term_type, "").unwrap();
-                unit.builder.build_store(arg, arg_alloca).unwrap();
+                unit.builder.build_store(arg_alloca, arg).unwrap();
 
                 unit.define(name, arg_alloca);
             }
-            Op::NewApp(_) => todo!(),
+            Op::NewApp(NewApp {
+                name,
+                var,
+                ref args,
+            }) => {
+                let term = unit.lookup(var);
+                let length_constant = unit.context.i64_type().const_int(args.len() as u64, false);
+                let args_type = unit.term_type.array_type(args.len() as u32);
+                let args_alloca = unit.builder.build_alloca(args_type, "").unwrap();
+                for (i, arg) in args.iter().enumerate() {
+                    let arg_local = unit.lookup(arg);
+                    let arg_load = unit
+                        .builder
+                        .build_load(unit.term_type, arg_local, "")
+                        .unwrap();
+                    let indexes = [
+                        unit.context.i64_type().const_int(0, false),
+                        unit.context.i64_type().const_int(i as u64, false),
+                    ];
+                    let arg_gep = unsafe {
+                        unit.builder
+                            .build_gep(args_type, args_alloca, &indexes, "")
+                            .unwrap()
+                    };
+                    unit.builder.build_store(arg_gep, arg_load).unwrap();
+                }
+
+                let new_app = unit.module.get_function("new_app").unwrap();
+                unit.builder
+                    .build_call(
+                        new_app,
+                        &[term.into(), args_alloca.into(), length_constant.into()],
+                        "",
+                    )
+                    .unwrap();
+
+                unit.define(name, term);
+            }
             Op::NewPartial(_) => todo!(),
             Op::ApplyPartial(_) => todo!(),
             Op::Copy(Copy { name, var }) => {
@@ -309,8 +362,32 @@ impl Op {
                     .build_call(free_term, &[BasicMetadataValueEnum::PointerValue(term)], "")
                     .unwrap();
             }
-            Op::Eval(_) => todo!(),
-            Op::Return(_) => todo!(),
+            Op::Eval(Eval { name, var }) => {
+                let term = unit.lookup(var);
+                let term_load = unit
+                    .builder
+                    .build_load(unit.term_type, term, "")
+                    .unwrap()
+                    .into_struct_value();
+                let fun = unit
+                    .builder
+                    .build_extract_value(term_load, 0, "")
+                    .unwrap()
+                    .into_pointer_value();
+                unit.builder
+                    .build_indirect_call(unit.fun_type, fun, &[term.into()], "")
+                    .unwrap();
+
+                unit.define(name, term);
+            }
+            Op::Return(Return { var }) => {
+                let term = unit.lookup(var);
+                let term_load = unit.builder.build_load(unit.term_type, term, "").unwrap();
+                unit.builder
+                    .build_store(unit.arg.unwrap(), term_load)
+                    .unwrap();
+                unit.builder.build_return(None).unwrap();
+            }
             Op::ReturnSymbol(ReturnSymbol { var }) => {
                 let term = unit.lookup(var);
                 let term_load = unit
@@ -332,6 +409,7 @@ struct Unit<'ctx> {
     builder: Builder<'ctx>,
     term_type: StructType<'ctx>,
     fun_type: FunctionType<'ctx>,
+    arg: Option<PointerValue<'ctx>>,
     locals: Vec<HashMap<&'ctx str, PointerValue<'ctx>>>,
 }
 
@@ -390,6 +468,30 @@ impl<'ctx> Unit<'ctx> {
         unsafe { main_fun.call() }
     }
 
+    fn binary(&self) {
+        targets::Target::initialize_all(&InitializationConfig::default());
+        let target_triple = inkwell::targets::TargetMachine::get_default_triple();
+        let target = targets::Target::from_triple(&target_triple)
+            .expect("Failed to create target from triple");
+        let target_machine = target
+            .create_target_machine(
+                &target_triple,
+                "generic",
+                "",
+                OptimizationLevel::Default,
+                inkwell::targets::RelocMode::Default,
+                inkwell::targets::CodeModel::Default,
+            )
+            .unwrap();
+        target_machine
+            .write_to_file(
+                &self.module,
+                inkwell::targets::FileType::Object,
+                Path::new("main.o"),
+            )
+            .unwrap();
+    }
+
     fn print(&self) {
         let s = self.module.print_to_string().to_string();
         println!("{}", s);
@@ -404,7 +506,9 @@ mod test {
         ($prog:expr, $expected:expr) => {
             let Output::Jit(result) = $prog.compile(Config {
                 target: Target::Jit,
-            });
+            }) else {
+                panic!()
+            };
             assert_eq!(result, $expected);
         };
     }
@@ -452,6 +556,59 @@ mod test {
                     }),
                     Op::FreeTerm(FreeTerm { var: "x" }),
                     Op::ReturnSymbol(ReturnSymbol { var: "x" }),
+                ]),
+            },
+            1
+        );
+    }
+
+    #[test]
+    fn test_id() {
+        test!(
+            Prog {
+                globals: vec![Global {
+                    name: "True",
+                    symbol: 1,
+                    arity: 0,
+                }],
+                funs: vec![Fun {
+                    name: "id",
+                    arg_name: "self",
+                    symbol: 2,
+                    arity: 1,
+                    block: Block(vec![
+                        Op::LoadArg(LoadArg {
+                            name: "x",
+                            var: "self",
+                            index: 0,
+                        }),
+                        Op::FreeArgs(FreeArgs { var: "self" }),
+                        Op::Eval(Eval {
+                            name: "x",
+                            var: "x",
+                        }),
+                        Op::Return(Return { var: "x" }),
+                    ]),
+                }],
+                main: Block(vec![
+                    Op::LoadGlobal(LoadGlobal {
+                        name: "id",
+                        global: "id",
+                    }),
+                    Op::LoadGlobal(LoadGlobal {
+                        name: "True",
+                        global: "True",
+                    }),
+                    Op::NewApp(NewApp {
+                        name: "result",
+                        var: "id",
+                        args: vec!["True"]
+                    }),
+                    Op::Eval(Eval {
+                        name: "result",
+                        var: "result",
+                    }),
+                    Op::ReturnSymbol(ReturnSymbol { var: "result" }),
                 ]),
             },
             1

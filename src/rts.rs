@@ -1,7 +1,10 @@
-use std::alloc::{alloc, dealloc, Layout};
+use std::{
+    alloc::{alloc, dealloc, Layout},
+    ptr::copy_nonoverlapping,
+};
 
 #[repr(C)]
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Debug)]
 pub struct Term {
     fun: extern "C" fn(*mut Term),
     args: *mut Term,
@@ -12,6 +15,12 @@ pub struct Term {
 
 #[no_mangle]
 pub extern "C" fn noop(_term: *mut Term) {}
+
+#[no_mangle]
+pub extern "C" fn new_app(term: &mut Term, args: *const Term, length: usize) {
+    term.args = alloc_terms(length);
+    unsafe { copy_nonoverlapping(args, term.args, length) };
+}
 
 #[no_mangle]
 pub extern "C" fn copy(dest: &mut Term, src: &Term) {
@@ -43,11 +52,11 @@ pub extern "C" fn free_term(term: &mut Term) {
 }
 
 fn as_ref<'a>(term: *const Term) -> &'a Term {
-    unsafe { term.as_ref() }.unwrap()
+    unsafe { term.as_ref().unwrap_unchecked() }
 }
 
 fn as_mut<'a>(term: *mut Term) -> &'a mut Term {
-    unsafe { term.as_mut() }.unwrap()
+    unsafe { term.as_mut().unwrap_unchecked() }
 }
 
 fn arg(term: &Term, i: usize) -> &Term {
@@ -63,7 +72,7 @@ fn arg_mut(term: &mut Term, i: usize) -> &mut Term {
 fn terms_layout(capacity: usize) -> Layout {
     let size = std::mem::size_of::<Term>() * capacity;
     let align = std::mem::align_of::<Term>();
-    Layout::from_size_align(size, align).unwrap()
+    unsafe { Layout::from_size_align(size, align).unwrap_unchecked() }
 }
 
 fn alloc_terms(capacity: usize) -> *mut Term {
@@ -134,6 +143,9 @@ mod test {
         *arg_mut(&mut term1, 0) = term2;
         *arg_mut(&mut term1, 1) = term2;
 
+        assert_eq!(arg(&term1, 0).symbol, 2);
+        assert_eq!(arg(&term1, 1).symbol, 2);
+
         free_term(&mut term1);
     }
 
@@ -156,6 +168,8 @@ mod test {
         };
 
         copy(&mut term2, &term1);
+
+        assert_eq!(term2.symbol, 1);
 
         free_term(&mut term1);
         free_term(&mut term2);
@@ -189,7 +203,39 @@ mod test {
         };
         copy(&mut term3, &term1);
 
+        assert_eq!(term3.symbol, 1);
+        assert_eq!(arg(&term3, 0).symbol, 2);
+        assert_eq!(arg(&term3, 1).symbol, 2);
+
         free_term(&mut term1);
         free_term(&mut term3);
+    }
+
+    #[test]
+    fn test_rts_new_app() {
+        let mut term1 = Term {
+            fun: noop,
+            args: null_mut(),
+            symbol: 1,
+            length: 1,
+            capacity: 1,
+        };
+
+        let term2 = Term {
+            fun: noop,
+            args: null_mut(),
+            symbol: 2,
+            length: 0,
+            capacity: 0,
+        };
+
+        let args = [term2];
+        let length = args.len();
+        new_app(&mut term1, args.as_ptr(), length);
+
+        assert_eq!(term1.symbol, 1);
+        assert_eq!(arg(&term1, 0).symbol, 2);
+
+        free_term(&mut term1);
     }
 }
