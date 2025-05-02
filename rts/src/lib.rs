@@ -1,4 +1,4 @@
-use libc::{c_void, free, malloc};
+use libc::{c_void, calloc, free, malloc};
 use std::{mem::size_of, ptr::copy_nonoverlapping};
 
 #[repr(C)]
@@ -18,6 +18,36 @@ pub extern "C" fn noop(_term: *mut Term) {}
 pub extern "C" fn new_app(term: &mut Term, args: *const Term, length: usize) {
     term.args = alloc_terms(length);
     unsafe { copy_nonoverlapping(args, term.args, length) };
+}
+
+#[no_mangle]
+pub extern "C" fn new_partial(term: &mut Term, args: *const Term, length: usize) {
+    term.args = calloc_terms(term.capacity as usize);
+    unsafe { copy_nonoverlapping(args, term.args, length) };
+
+    let mut fun = *term;
+    fun.length = 0;
+
+    let last = term.capacity - 1;
+    *arg_mut(term, last as usize) = fun;
+
+    term.fun = noop;
+    term.length = length as u16;
+}
+
+#[no_mangle]
+pub extern "C" fn apply_partial(term: &mut Term, args: *const Term, length: usize) {
+    let last = term.capacity - 1;
+    let fun = *arg_mut(term, last as usize);
+
+    let offset = term.length;
+    unsafe { copy_nonoverlapping(args, arg_mut(term, offset as usize), length) };
+
+    term.length += length as u16;
+
+    if term.length == term.capacity {
+        term.fun = fun.fun;
+    }
 }
 
 #[no_mangle]
@@ -70,6 +100,11 @@ fn arg_mut(term: &mut Term, i: usize) -> &mut Term {
 fn alloc_terms(capacity: usize) -> *mut Term {
     let size = capacity * size_of::<Term>();
     (unsafe { malloc(size) } as *mut Term)
+}
+
+fn calloc_terms(capacity: usize) -> *mut Term {
+    let size = size_of::<Term>();
+    (unsafe { calloc(capacity, size) } as *mut Term)
 }
 
 fn dealloc_terms(terms: *mut Term) {
@@ -223,5 +258,39 @@ mod test {
         assert_eq!(arg(&term1, 0).symbol, 2);
 
         free_term(&mut term1);
+    }
+
+    #[test]
+    fn test_rts_new_partial() {
+        let mut term1 = Term {
+            fun: noop,
+            args: null_mut(),
+            symbol: 1,
+            length: 0,
+            capacity: 2,
+        };
+
+        let term2 = Term {
+            fun: noop,
+            args: null_mut(),
+            symbol: 2,
+            length: 0,
+            capacity: 0,
+        };
+
+        let args = [term2];
+        let length = args.len();
+        new_partial(&mut term1, args.as_ptr(), length);
+
+        assert_eq!(term1.symbol, 1);
+        assert_eq!(arg(&term1, 0).symbol, 2);
+        assert_eq!(arg(&term1, 1).symbol, 1);
+
+        free_term(&mut term1);
+    }
+
+    #[test]
+    fn test_rts_copy_partial() {
+        // TODO
     }
 }

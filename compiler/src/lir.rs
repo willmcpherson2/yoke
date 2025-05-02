@@ -319,42 +319,17 @@ impl Op {
                 name,
                 var,
                 ref args,
-            }) => {
-                let term = unit.lookup(var);
-                let length_constant = unit.context.i64_type().const_int(args.len() as u64, false);
-                let args_type = unit.term_type.array_type(args.len() as u32);
-                let args_alloca = unit.builder.build_alloca(args_type, "").unwrap();
-                for (i, arg) in args.iter().enumerate() {
-                    let arg_local = unit.lookup(arg);
-                    let arg_load = unit
-                        .builder
-                        .build_load(unit.term_type, arg_local, "")
-                        .unwrap();
-                    let indexes = [
-                        unit.context.i64_type().const_int(0, false),
-                        unit.context.i64_type().const_int(i as u64, false),
-                    ];
-                    let arg_gep = unsafe {
-                        unit.builder
-                            .build_gep(args_type, args_alloca, &indexes, "")
-                            .unwrap()
-                    };
-                    unit.builder.build_store(arg_gep, arg_load).unwrap();
-                }
-
-                let new_app = unit.module.get_function("new_app").unwrap();
-                unit.builder
-                    .build_call(
-                        new_app,
-                        &[term.into(), args_alloca.into(), length_constant.into()],
-                        "",
-                    )
-                    .unwrap();
-
-                unit.define(name, term);
-            }
-            Op::NewPartial(_) => todo!(),
-            Op::ApplyPartial(_) => todo!(),
+            }) => unit.compile_apply_call(name, "new_app", var, args),
+            Op::NewPartial(NewPartial {
+                name,
+                var,
+                ref args,
+            }) => unit.compile_apply_call(name, "new_partial", var, args),
+            Op::ApplyPartial(ApplyPartial {
+                name,
+                var,
+                ref args,
+            }) => unit.compile_apply_call(name, "apply_partial", var, args),
             Op::Copy(Copy { name, var }) => {
                 let dest = unit.builder.build_alloca(unit.term_type, "").unwrap();
                 let src = unit.lookup(var);
@@ -520,6 +495,47 @@ impl<'ctx> Unit<'ctx> {
     fn print(&self) {
         let s = self.module.print_to_string().to_string();
         println!("{}", s);
+    }
+
+    fn compile_apply_call(
+        &mut self,
+        name: &'ctx str,
+        fun_name: &'static str,
+        var: &str,
+        args: &Vec<&str>,
+    ) {
+        let term = self.lookup(var);
+        let length_constant = self.context.i64_type().const_int(args.len() as u64, false);
+        let args_type = self.term_type.array_type(args.len() as u32);
+        let args_alloca = self.builder.build_alloca(args_type, "").unwrap();
+        for (i, arg) in args.iter().enumerate() {
+            let arg_local = self.lookup(arg);
+            let arg_load = self
+                .builder
+                .build_load(self.term_type, arg_local, "")
+                .unwrap();
+            let indexes = [
+                self.context.i64_type().const_int(0, false),
+                self.context.i64_type().const_int(i as u64, false),
+            ];
+            let arg_gep = unsafe {
+                self.builder
+                    .build_gep(args_type, args_alloca, &indexes, "")
+                    .unwrap()
+            };
+            self.builder.build_store(arg_gep, arg_load).unwrap();
+        }
+
+        let fun = self.module.get_function(fun_name).unwrap();
+        self.builder
+            .build_call(
+                fun,
+                &[term.into(), args_alloca.into(), length_constant.into()],
+                "",
+            )
+            .unwrap();
+
+        self.define(name, term);
     }
 }
 
