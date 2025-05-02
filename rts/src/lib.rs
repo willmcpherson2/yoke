@@ -144,7 +144,7 @@ mod test {
     }
 
     #[test]
-    fn test_rts_free_term() {
+    fn test_free_term() {
         let mut term1 = Term {
             fun: noop,
             args: alloc_terms(2),
@@ -171,7 +171,7 @@ mod test {
     }
 
     #[test]
-    fn test_rts_copy_nil() {
+    fn test_copy_nil() {
         let mut term1 = Term {
             fun: noop,
             args: null_mut(),
@@ -197,7 +197,7 @@ mod test {
     }
 
     #[test]
-    fn test_rts_copy() {
+    fn test_copy() {
         let mut term1 = Term {
             fun: noop,
             args: alloc_terms(2),
@@ -233,7 +233,7 @@ mod test {
     }
 
     #[test]
-    fn test_rts_new_app() {
+    fn test_new_app() {
         let mut term1 = Term {
             fun: noop,
             args: null_mut(),
@@ -261,7 +261,7 @@ mod test {
     }
 
     #[test]
-    fn test_rts_new_partial() {
+    fn test_new_partial() {
         let mut term1 = Term {
             fun: noop,
             args: null_mut(),
@@ -290,7 +290,7 @@ mod test {
     }
 
     #[test]
-    fn test_rts_copy_partial() {
+    fn test_copy_partial() {
         // TODO
     }
 }
