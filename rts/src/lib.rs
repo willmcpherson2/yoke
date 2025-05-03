@@ -1,5 +1,8 @@
 use libc::{c_void, calloc, free, malloc};
-use std::{mem::size_of, ptr::copy_nonoverlapping};
+use std::{
+    mem::size_of,
+    ptr::{copy_nonoverlapping, null_mut},
+};
 
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
@@ -22,11 +25,16 @@ pub extern "C" fn new_app(term: &mut Term, args: *const Term, length: usize) {
 
 #[no_mangle]
 pub extern "C" fn new_partial(term: &mut Term, args: *const Term, length: usize) {
+    let fun = Term {
+        fun: term.fun,
+        args: null_mut(),
+        symbol: term.symbol,
+        length: 0,
+        capacity: 0,
+    };
+
     term.args = calloc_terms(term.capacity as usize);
     unsafe { copy_nonoverlapping(args, term.args, length) };
-
-    let mut fun = *term;
-    fun.length = 0;
 
     let last = term.capacity - 1;
     *arg_mut(term, last as usize) = fun;
@@ -38,7 +46,7 @@ pub extern "C" fn new_partial(term: &mut Term, args: *const Term, length: usize)
 #[no_mangle]
 pub extern "C" fn apply_partial(term: &mut Term, args: *const Term, length: usize) {
     let last = term.capacity - 1;
-    let fun = *arg_mut(term, last as usize);
+    let fun = *arg(term, last as usize);
 
     let offset = term.length;
     unsafe { copy_nonoverlapping(args, arg_mut(term, offset as usize), length) };
@@ -291,6 +299,40 @@ mod test {
 
     #[test]
     fn test_copy_partial() {
-        // TODO
+        let mut term1 = Term {
+            fun: noop,
+            args: null_mut(),
+            symbol: 1,
+            length: 2,
+            capacity: 2,
+        };
+
+        let term2 = Term {
+            fun: noop,
+            args: null_mut(),
+            symbol: 2,
+            length: 0,
+            capacity: 0,
+        };
+
+        let args = [term2];
+        let length = args.len();
+        new_partial(&mut term1, args.as_ptr(), length);
+
+        let mut term3 = Term {
+            fun: noop,
+            args: null_mut(),
+            symbol: 0,
+            length: 0,
+            capacity: 0,
+        };
+        copy(&mut term3, &term1);
+
+        assert_eq!(term3.symbol, 1);
+        assert_eq!(arg(&term3, 0).symbol, 2);
+        assert_eq!(arg(&term3, 1).symbol, 1);
+
+        free_term(&mut term3);
+        free_term(&mut term1);
     }
 }
