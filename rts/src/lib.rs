@@ -335,4 +335,45 @@ mod test {
         free_term(&mut term3);
         free_term(&mut term1);
     }
+
+    #[test]
+    fn test_apply_partial() {
+        let mut term1 = Term {
+            fun: noop,
+            args: null_mut(),
+            symbol: 1,
+            length: 2,
+            capacity: 2,
+        };
+
+        let term2 = Term {
+            fun: noop,
+            args: null_mut(),
+            symbol: 2,
+            length: 0,
+            capacity: 0,
+        };
+
+        let args = [term2];
+        let length = args.len();
+        new_partial(&mut term1, args.as_ptr(), length);
+
+        let term3 = Term {
+            fun: noop,
+            args: null_mut(),
+            symbol: 3,
+            length: 0,
+            capacity: 0,
+        };
+
+        let args = [term3];
+        let length = args.len();
+        apply_partial(&mut term1, args.as_ptr(), length);
+
+        assert_eq!(term1.symbol, 1);
+        assert_eq!(arg(&term1, 0).symbol, 2);
+        assert_eq!(arg(&term1, 1).symbol, 3);
+
+        free_term(&mut term1);
+    }
 }
