@@ -1,4 +1,5 @@
 use inkwell::{
+    basic_block::BasicBlock,
     builder::Builder,
     context::Context,
     memory_buffer::MemoryBuffer,
@@ -52,8 +53,15 @@ impl Prog {
         let module = Module::parse_bitcode_from_buffer(&buffer, &context).unwrap();
         let builder = context.create_builder();
 
-        let rts_fun_names =
-            HashSet::from([c"noop", c"new_app", c"copy", c"free_args", c"free_term"]);
+        let rts_fun_names = HashSet::from([
+            c"noop",
+            c"new_app",
+            c"new_partial",
+            c"apply_partial",
+            c"copy",
+            c"free_args",
+            c"free_term",
+        ]);
         let rts_funs = module
             .get_functions()
             .filter(|fun| rts_fun_names.contains(fun.get_name()));
@@ -87,6 +95,7 @@ impl Prog {
             term_type,
             fun_type,
             fun: None,
+            block: None,
             arg: None,
             locals: Vec::new(),
         };
@@ -100,10 +109,9 @@ impl Prog {
         self.compile_main(&mut unit);
 
         if let Err(e) = unit.module.verify() {
+            unit.print();
             panic!("LLVM verify error:\n{}", e.to_string());
         };
-
-        unit.print();
 
         match config.target {
             Target::Jit => Output::Jit(unit.jit()),
@@ -116,8 +124,11 @@ impl Prog {
 
     fn compile_main(&self, unit: &mut Unit) {
         let main_fun_type = unit.context.i32_type().fn_type(&[], false);
-        let main_fun = unit.module.add_function("main", main_fun_type, None);
-        let block = unit.context.append_basic_block(main_fun, "start");
+        let fun = unit.module.add_function("main", main_fun_type, None);
+        unit.fun = Some(fun);
+
+        let block = unit.context.append_basic_block(fun, "start");
+        unit.block = Some(block);
         unit.builder.position_at_end(block);
 
         unit.clear_locals();
@@ -155,7 +166,10 @@ impl Fun {
         let fun = unit
             .module
             .add_function("", unit.fun_type, Some(Linkage::Internal));
+        unit.fun = Some(fun);
+
         let block = unit.context.append_basic_block(fun, "start");
+        unit.block = Some(block);
         unit.builder.position_at_end(block);
 
         unit.clear_locals();
@@ -407,9 +421,11 @@ impl Op {
                     .into_struct_value();
                 let symbol = unit
                     .builder
-                    .build_extract_value(term_load, 0, "")
+                    .build_extract_value(term_load, 2, "")
                     .unwrap()
                     .into_int_value();
+
+                unit.add_scope();
 
                 let cases = cases
                     .iter()
@@ -429,11 +445,10 @@ impl Op {
                 unit.builder.position_at_end(default_case);
                 unit.builder.build_unreachable().unwrap();
 
+                unit.builder.position_at_end(unit.block.unwrap());
                 unit.builder
                     .build_switch(symbol, default_case, &cases)
                     .unwrap();
-
-                unit.add_scope();
             }
         }
     }
@@ -447,6 +462,7 @@ struct Unit<'ctx> {
     term_type: StructType<'ctx>,
     fun_type: FunctionType<'ctx>,
     fun: Option<FunctionValue<'ctx>>,
+    block: Option<BasicBlock<'ctx>>,
     arg: Option<PointerValue<'ctx>>,
     locals: Vec<HashMap<&'ctx str, PointerValue<'ctx>>>,
 }
@@ -691,6 +707,51 @@ mod test {
                 ]),
             },
             1
+        );
+    }
+
+    #[test]
+    fn test_switch() {
+        test!(
+            Prog {
+                globals: vec![
+                    Global {
+                        name: "True",
+                        symbol: 1,
+                        arity: 0,
+                    },
+                    Global {
+                        name: "False",
+                        symbol: 2,
+                        arity: 0,
+                    },
+                ],
+                funs: vec![],
+                main: Block(vec![
+                    Op::LoadGlobal(LoadGlobal {
+                        name: "True",
+                        global: "True",
+                    }),
+                    Op::LoadGlobal(LoadGlobal {
+                        name: "False",
+                        global: "False",
+                    }),
+                    Op::Switch(Switch {
+                        var: "True",
+                        cases: vec![
+                            Case {
+                                symbol: 1,
+                                block: Block(vec![Op::ReturnSymbol(ReturnSymbol { var: "False" })])
+                            },
+                            Case {
+                                symbol: 2,
+                                block: Block(vec![Op::ReturnSymbol(ReturnSymbol { var: "True" })])
+                            },
+                        ],
+                    }),
+                ]),
+            },
+            2
         );
     }
 }
