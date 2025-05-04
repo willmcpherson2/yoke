@@ -7,18 +7,21 @@ use inkwell::{
     targets::{self, InitializationConfig},
     types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
     values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
-    AddressSpace, OptimizationLevel,
+    AddressSpace,
 };
 use std::{
     collections::{HashMap, HashSet},
     path::Path,
 };
 
+pub use inkwell::OptimizationLevel;
+
 const RTS_BC: &[u8] = include_bytes!("../../target/release/deps/rts.bc");
 
 #[derive(Debug)]
 pub struct Config {
     pub target: Target,
+    pub opt_level: OptimizationLevel,
 }
 
 #[derive(Debug)]
@@ -89,6 +92,7 @@ impl Prog {
         );
 
         let mut unit = Unit {
+            config,
             context: &context,
             module,
             builder,
@@ -113,7 +117,7 @@ impl Prog {
             panic!("LLVM verify error:\n{}", e.to_string());
         };
 
-        match config.target {
+        match unit.config.target {
             Target::Jit => Output::Jit(unit.jit()),
             Target::Binary => {
                 unit.binary();
@@ -456,6 +460,7 @@ impl Op {
 
 #[derive(Debug)]
 struct Unit<'ctx> {
+    config: Config,
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
@@ -515,7 +520,7 @@ impl<'ctx> Unit<'ctx> {
     fn jit(&self) -> i32 {
         let engine = self
             .module
-            .create_jit_execution_engine(OptimizationLevel::None)
+            .create_jit_execution_engine(self.config.opt_level)
             .unwrap();
         type MainFun = unsafe extern "C" fn() -> i32;
         let main_fun = unsafe { engine.get_function::<MainFun>("main") }.unwrap();
@@ -532,7 +537,7 @@ impl<'ctx> Unit<'ctx> {
                 &target_triple,
                 "generic",
                 "",
-                OptimizationLevel::Default,
+                self.config.opt_level,
                 inkwell::targets::RelocMode::Default,
                 inkwell::targets::CodeModel::Default,
             )
@@ -601,6 +606,7 @@ mod test {
         ($prog:expr, $expected:expr) => {
             let Output::Jit(result) = $prog.compile(Config {
                 target: Target::Jit,
+                opt_level: OptimizationLevel::None,
             }) else {
                 panic!()
             };
