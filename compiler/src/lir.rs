@@ -86,6 +86,7 @@ impl Prog {
             builder,
             term_type,
             fun_type,
+            fun: None,
             arg: None,
             locals: Vec::new(),
         };
@@ -397,7 +398,43 @@ impl Op {
                 let symbol = unit.builder.build_extract_value(term_load, 2, "").unwrap();
                 unit.builder.build_return(Some(&symbol)).unwrap();
             }
-            Op::Switch(_) => todo!(),
+            Op::Switch(Switch { var, ref cases }) => {
+                let term = unit.lookup(var);
+                let term_load = unit
+                    .builder
+                    .build_load(unit.term_type, term, "")
+                    .unwrap()
+                    .into_struct_value();
+                let symbol = unit
+                    .builder
+                    .build_extract_value(term_load, 0, "")
+                    .unwrap()
+                    .into_int_value();
+
+                let cases = cases
+                    .iter()
+                    .map(|case| {
+                        let symbol = unit.context.i32_type().const_int(case.symbol.into(), false);
+                        let block = unit.context.append_basic_block(unit.fun.unwrap(), "");
+                        unit.builder.position_at_end(block);
+                        unit.clear_scope();
+                        case.block.compile(unit);
+                        (symbol, block)
+                    })
+                    .collect::<Vec<_>>();
+
+                let default_case = unit
+                    .context
+                    .append_basic_block(unit.fun.unwrap(), "default");
+                unit.builder.position_at_end(default_case);
+                unit.builder.build_unreachable().unwrap();
+
+                unit.builder
+                    .build_switch(symbol, default_case, &cases)
+                    .unwrap();
+
+                unit.add_scope();
+            }
         }
     }
 }
@@ -409,6 +446,7 @@ struct Unit<'ctx> {
     builder: Builder<'ctx>,
     term_type: StructType<'ctx>,
     fun_type: FunctionType<'ctx>,
+    fun: Option<FunctionValue<'ctx>>,
     arg: Option<PointerValue<'ctx>>,
     locals: Vec<HashMap<&'ctx str, PointerValue<'ctx>>>,
 }
