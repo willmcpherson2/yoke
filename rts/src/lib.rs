@@ -14,6 +14,18 @@ pub struct Term {
     capacity: u16,
 }
 
+impl Term {
+    fn arg(&self, i: usize) -> &Term {
+        let arg = unsafe { self.args.add(i) };
+        unsafe { arg.as_ref().unwrap_unchecked() }
+    }
+
+    fn arg_mut(&mut self, i: usize) -> &mut Term {
+        let arg = unsafe { self.args.add(i) };
+        unsafe { arg.as_mut().unwrap_unchecked() }
+    }
+}
+
 #[no_mangle]
 pub extern "C" fn noop(_term: *mut Term) {}
 
@@ -37,7 +49,7 @@ pub extern "C" fn new_partial(term: &mut Term, args: *const Term, length: usize)
     unsafe { copy_nonoverlapping(args, term.args, length) };
 
     let last = term.capacity - 1;
-    *arg_mut(term, last as usize) = fun;
+    *term.arg_mut(last as usize) = fun;
 
     term.fun = noop;
     term.length = length as u16;
@@ -46,10 +58,10 @@ pub extern "C" fn new_partial(term: &mut Term, args: *const Term, length: usize)
 #[no_mangle]
 pub extern "C" fn apply_partial(term: &mut Term, args: *const Term, length: usize) {
     let last = term.capacity - 1;
-    let fun = *arg(term, last as usize);
+    let fun = *term.arg(last as usize);
 
     let offset = term.length;
-    unsafe { copy_nonoverlapping(args, arg_mut(term, offset as usize), length) };
+    unsafe { copy_nonoverlapping(args, term.arg_mut(offset as usize), length) };
 
     term.length += length as u16;
 
@@ -70,39 +82,21 @@ pub extern "C" fn copy(dest: &mut Term, src: &Term) {
     dest.args = alloc_terms(size);
 
     for i in 0..src.capacity as usize {
-        copy(arg_mut(dest, i), arg(src, i));
+        copy(dest.arg_mut(i), src.arg(i));
     }
 }
 
 #[no_mangle]
 pub extern "C" fn free_args(term: &mut Term) {
-    dealloc_terms(term.args);
+    free_terms(term.args);
 }
 
 #[no_mangle]
 pub extern "C" fn free_term(term: &mut Term) {
     for i in 0..term.length as usize {
-        free_term(arg_mut(term, i));
+        free_term(term.arg_mut(i));
     }
     free_args(term);
-}
-
-fn as_ref<'a>(term: *const Term) -> &'a Term {
-    unsafe { term.as_ref().unwrap_unchecked() }
-}
-
-fn as_mut<'a>(term: *mut Term) -> &'a mut Term {
-    unsafe { term.as_mut().unwrap_unchecked() }
-}
-
-fn arg(term: &Term, i: usize) -> &Term {
-    let arg = unsafe { term.args.add(i) };
-    as_ref(arg)
-}
-
-fn arg_mut(term: &mut Term, i: usize) -> &mut Term {
-    let arg = unsafe { term.args.add(i) };
-    as_mut(arg)
 }
 
 fn alloc_terms(capacity: usize) -> *mut Term {
@@ -115,7 +109,7 @@ fn calloc_terms(capacity: usize) -> *mut Term {
     (unsafe { calloc(capacity, size) } as *mut Term)
 }
 
-fn dealloc_terms(terms: *mut Term) {
+fn free_terms(terms: *mut Term) {
     unsafe { free(terms as *mut c_void) };
 }
 
@@ -137,7 +131,10 @@ mod test {
     fn show_term(term: &Term) -> ShowTerm {
         let mut args = vec![];
         for i in 0..term.length as usize {
-            let arg = as_ref(arg(term, i));
+            let arg = {
+                let term: *const Term = term.arg(i);
+                unsafe { term.as_ref().unwrap_unchecked() }
+            };
             args.push(show_term(arg));
         }
 
@@ -169,11 +166,11 @@ mod test {
             capacity: 0,
         };
 
-        *arg_mut(&mut term1, 0) = term2;
-        *arg_mut(&mut term1, 1) = term2;
+        *term1.arg_mut(0) = term2;
+        *term1.arg_mut(1) = term2;
 
-        assert_eq!(arg(&term1, 0).symbol, 2);
-        assert_eq!(arg(&term1, 1).symbol, 2);
+        assert_eq!(term1.arg(0).symbol, 2);
+        assert_eq!(term1.arg(1).symbol, 2);
 
         free_term(&mut term1);
     }
@@ -220,8 +217,8 @@ mod test {
             length: 0,
             capacity: 0,
         };
-        *arg_mut(&mut term1, 0) = term2;
-        *arg_mut(&mut term1, 1) = term2;
+        *term1.arg_mut(0) = term2;
+        *term1.arg_mut(1) = term2;
 
         let mut term3 = Term {
             fun: noop,
@@ -233,8 +230,8 @@ mod test {
         copy(&mut term3, &term1);
 
         assert_eq!(term3.symbol, 1);
-        assert_eq!(arg(&term3, 0).symbol, 2);
-        assert_eq!(arg(&term3, 1).symbol, 2);
+        assert_eq!(term3.arg(0).symbol, 2);
+        assert_eq!(term3.arg(1).symbol, 2);
 
         free_term(&mut term1);
         free_term(&mut term3);
@@ -263,7 +260,7 @@ mod test {
         new_app(&mut term1, args.as_ptr(), length);
 
         assert_eq!(term1.symbol, 1);
-        assert_eq!(arg(&term1, 0).symbol, 2);
+        assert_eq!(term1.arg(0).symbol, 2);
 
         free_term(&mut term1);
     }
@@ -291,8 +288,8 @@ mod test {
         new_partial(&mut term1, args.as_ptr(), length);
 
         assert_eq!(term1.symbol, 1);
-        assert_eq!(arg(&term1, 0).symbol, 2);
-        assert_eq!(arg(&term1, 1).symbol, 1);
+        assert_eq!(term1.arg(0).symbol, 2);
+        assert_eq!(term1.arg(1).symbol, 1);
 
         free_term(&mut term1);
     }
@@ -329,8 +326,8 @@ mod test {
         copy(&mut term3, &term1);
 
         assert_eq!(term3.symbol, 1);
-        assert_eq!(arg(&term3, 0).symbol, 2);
-        assert_eq!(arg(&term3, 1).symbol, 1);
+        assert_eq!(term3.arg(0).symbol, 2);
+        assert_eq!(term3.arg(1).symbol, 1);
 
         free_term(&mut term3);
         free_term(&mut term1);
@@ -371,8 +368,8 @@ mod test {
         apply_partial(&mut term1, args.as_ptr(), length);
 
         assert_eq!(term1.symbol, 1);
-        assert_eq!(arg(&term1, 0).symbol, 2);
-        assert_eq!(arg(&term1, 1).symbol, 3);
+        assert_eq!(term1.arg(0).symbol, 2);
+        assert_eq!(term1.arg(1).symbol, 3);
 
         free_term(&mut term1);
     }
