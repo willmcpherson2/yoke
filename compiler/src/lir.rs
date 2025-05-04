@@ -24,6 +24,15 @@ pub struct Config {
     pub opt_level: OptimizationLevel,
 }
 
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            target: Target::Jit,
+            opt_level: OptimizationLevel::None,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Target {
     Jit,
@@ -604,10 +613,7 @@ mod test {
 
     macro_rules! test {
         ($prog:expr, $expected:expr) => {
-            let Output::Jit(result) = $prog.compile(Config {
-                target: Target::Jit,
-                opt_level: OptimizationLevel::None,
-            }) else {
+            let Output::Jit(result) = $prog.compile(Config::default()) else {
                 panic!()
             };
             assert_eq!(result, $expected);

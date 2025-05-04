@@ -36,8 +36,5 @@ fn main() {
         ]),
     };
 
-    dbg!(prog.compile(Config {
-        target: Target::Binary,
-        opt_level: OptimizationLevel::Aggressive,
-    }));
+    dbg!(prog.compile(Config::default()));
 }
