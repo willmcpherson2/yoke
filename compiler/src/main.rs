@@ -4,37 +4,54 @@ use lir::*;
 
 fn main() {
     let prog = Prog {
-        globals: vec![
-            Global {
-                name: "F",
-                symbol: 1,
-                arity: 1,
-            },
-            Global {
-                name: "A",
-                symbol: 2,
-                arity: 0,
-            },
-        ],
-        funs: vec![],
+        globals: vec![Global {
+            name: "True",
+            symbol: 1,
+            arity: 0,
+        }],
+        funs: vec![Fun {
+            name: "id",
+            arg_name: "self",
+            symbol: 2,
+            arity: 1,
+            block: Block(vec![
+                Op::LoadArg(LoadArg {
+                    name: "x",
+                    var: "self",
+                    index: 0,
+                }),
+                Op::FreeArgs(FreeArgs { var: "self" }),
+                Op::Eval(Eval {
+                    name: "x",
+                    var: "x",
+                }),
+                Op::Return(Return { var: "x" }),
+            ]),
+        }],
         main: Block(vec![
             Op::LoadGlobal(LoadGlobal {
-                name: "F",
-                global: "F",
+                name: "id",
+                global: "id",
             }),
             Op::LoadGlobal(LoadGlobal {
-                name: "A",
-                global: "A",
+                name: "True",
+                global: "True",
             }),
             Op::NewApp(NewApp {
                 name: "result",
-                var: "F",
-                args: vec!["A"],
+                var: "id",
+                args: vec!["True"],
             }),
-            Op::FreeTerm(FreeTerm { var: "result" }),
+            Op::Eval(Eval {
+                name: "result",
+                var: "result",
+            }),
             Op::ReturnSymbol(ReturnSymbol { var: "result" }),
         ]),
     };
 
-    dbg!(prog.compile(Config::default()));
+    dbg!(prog.compile(Config {
+        target: Target::Binary,
+        opt_level: OptimizationLevel::Aggressive
+    }));
 }
