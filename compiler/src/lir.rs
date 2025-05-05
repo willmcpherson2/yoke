@@ -4,7 +4,7 @@ use inkwell::{
     context::Context,
     memory_buffer::MemoryBuffer,
     module::{Linkage, Module},
-    targets::{self, InitializationConfig},
+    targets::{self, CodeModel, FileType, InitializationConfig, RelocMode, TargetMachine},
     types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
     values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
     AddressSpace,
@@ -538,25 +538,20 @@ impl<'ctx> Unit<'ctx> {
 
     fn binary(&self) {
         targets::Target::initialize_all(&InitializationConfig::default());
-        let target_triple = inkwell::targets::TargetMachine::get_default_triple();
-        let target = targets::Target::from_triple(&target_triple)
-            .expect("Failed to create target from triple");
+        let target_triple = TargetMachine::get_default_triple();
+        let target = targets::Target::from_triple(&target_triple).unwrap();
         let target_machine = target
             .create_target_machine(
                 &target_triple,
                 "generic",
                 "",
                 self.config.opt_level,
-                inkwell::targets::RelocMode::Default,
-                inkwell::targets::CodeModel::Default,
+                RelocMode::Default,
+                CodeModel::Default,
             )
             .unwrap();
         target_machine
-            .write_to_file(
-                &self.module,
-                inkwell::targets::FileType::Object,
-                Path::new("main.o"),
-            )
+            .write_to_file(&self.module, FileType::Object, Path::new("main.o"))
             .unwrap();
     }
 
