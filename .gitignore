@@ -1,2 +1,6 @@
 /.direnv/
 /target/
+/main
+/*.o
+/*.ll
+/*.btc
