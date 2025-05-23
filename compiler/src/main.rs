@@ -51,7 +51,7 @@ fn main() {
     };
 
     dbg!(prog.compile(Config {
-        target: Target::Binary,
-        opt_level: OptimizationLevel::Aggressive
+        mode: Mode::Aot,
+        opt_level: OptLevel::O3,
     }));
 }

@@ -4,44 +4,48 @@ use inkwell::{
     context::Context,
     memory_buffer::MemoryBuffer,
     module::{Linkage, Module},
-    targets::{self, CodeModel, FileType, InitializationConfig, RelocMode, TargetMachine},
+    passes::PassBuilderOptions,
+    targets::{FileType, InitializationConfig, Target, TargetMachine, TargetMachineOptions},
     types::{BasicMetadataTypeEnum, BasicTypeEnum, FunctionType, StructType},
     values::{BasicMetadataValueEnum, BasicValueEnum, FunctionValue, PointerValue},
-    AddressSpace,
+    AddressSpace, OptimizationLevel,
 };
-use std::{
-    collections::{HashMap, HashSet},
-    path::Path,
-};
+use std::{collections::HashMap, path::Path};
 
-pub use inkwell::OptimizationLevel;
-
-const RTS_BC: &[u8] = include_bytes!("../../target/release/deps/rts.bc");
+const RTS_BC: &[u8] = include_bytes!("../../target/rts.bc");
 
 #[derive(Debug)]
 pub struct Config {
-    pub target: Target,
-    pub opt_level: OptimizationLevel,
+    pub mode: Mode,
+    pub opt_level: OptLevel,
 }
 
 impl Default for Config {
     fn default() -> Self {
         Self {
-            target: Target::Jit,
-            opt_level: OptimizationLevel::None,
+            mode: Mode::Jit,
+            opt_level: OptLevel::O0,
         }
     }
 }
 
 #[derive(Debug)]
-pub enum Target {
+pub enum OptLevel {
+    O0,
+    O1,
+    O2,
+    O3,
+}
+
+#[derive(Debug)]
+pub enum Mode {
     Jit,
-    Binary,
+    Aot,
 }
 
 #[derive(Debug)]
 pub enum Output {
-    Jit(i32),
+    ExitCode(i32),
     Binary,
 }
 
@@ -60,26 +64,18 @@ pub struct Prog {
 
 impl Prog {
     pub fn compile(&self, config: Config) -> Output {
+        Target::initialize_all(&InitializationConfig::default());
+        let triple = TargetMachine::get_default_triple();
+        let target = Target::from_triple(&triple).unwrap();
+        let options = TargetMachineOptions::new().set_level(OptimizationLevel::None);
+        let machine = target
+            .create_target_machine_from_options(&triple, options)
+            .unwrap();
+
         let context = Context::create();
-        let buffer = MemoryBuffer::create_from_memory_range(RTS_BC, "rts");
+        let buffer = MemoryBuffer::create_from_memory_range(RTS_BC, "main");
         let module = Module::parse_bitcode_from_buffer(&buffer, &context).unwrap();
         let builder = context.create_builder();
-
-        let rts_fun_names = HashSet::from([
-            c"noop",
-            c"new_app",
-            c"new_partial",
-            c"apply_partial",
-            c"copy",
-            c"free_args",
-            c"free_term",
-        ]);
-        let rts_funs = module
-            .get_functions()
-            .filter(|fun| rts_fun_names.contains(fun.get_name()));
-        for fun in rts_funs {
-            fun.set_linkage(Linkage::Internal)
-        }
 
         let term_type = context.opaque_struct_type("Term");
         term_type.set_body(
@@ -102,6 +98,7 @@ impl Prog {
 
         let mut unit = Unit {
             config,
+            machine,
             context: &context,
             module,
             builder,
@@ -121,14 +118,16 @@ impl Prog {
 
         self.compile_main(&mut unit);
 
+        unit.opt();
+
         if let Err(e) = unit.module.verify() {
             unit.print();
             panic!("LLVM verify error:\n{}", e.to_string());
         };
 
-        match unit.config.target {
-            Target::Jit => Output::Jit(unit.jit()),
-            Target::Binary => {
+        match unit.config.mode {
+            Mode::Jit => Output::ExitCode(unit.jit()),
+            Mode::Aot => {
                 unit.binary();
                 Output::Binary
             }
@@ -470,6 +469,7 @@ impl Op {
 #[derive(Debug)]
 struct Unit<'ctx> {
     config: Config,
+    machine: TargetMachine,
     context: &'ctx Context,
     module: Module<'ctx>,
     builder: Builder<'ctx>,
@@ -526,10 +526,22 @@ impl<'ctx> Unit<'ctx> {
         global.set_initializer(&struct_val);
     }
 
+    fn opt(&self) {
+        let pass = match self.config.opt_level {
+            OptLevel::O0 => return,
+            OptLevel::O1 => "default<O1>",
+            OptLevel::O2 => "default<O2>",
+            OptLevel::O3 => "default<O3>",
+        };
+        self.module
+            .run_passes(pass, &self.machine, PassBuilderOptions::create())
+            .unwrap();
+    }
+
     fn jit(&self) -> i32 {
         let engine = self
             .module
-            .create_jit_execution_engine(self.config.opt_level)
+            .create_jit_execution_engine(OptimizationLevel::None)
             .unwrap();
         type MainFun = unsafe extern "C" fn() -> i32;
         let main_fun = unsafe { engine.get_function::<MainFun>("main") }.unwrap();
@@ -537,20 +549,7 @@ impl<'ctx> Unit<'ctx> {
     }
 
     fn binary(&self) {
-        targets::Target::initialize_all(&InitializationConfig::default());
-        let target_triple = TargetMachine::get_default_triple();
-        let target = targets::Target::from_triple(&target_triple).unwrap();
-        let target_machine = target
-            .create_target_machine(
-                &target_triple,
-                "generic",
-                "",
-                self.config.opt_level,
-                RelocMode::Default,
-                CodeModel::Default,
-            )
-            .unwrap();
-        target_machine
+        self.machine
             .write_to_file(&self.module, FileType::Object, Path::new("main.o"))
             .unwrap();
     }
@@ -608,7 +607,7 @@ mod test {
 
     macro_rules! test {
         ($prog:expr, $expected:expr) => {
-            let Output::Jit(result) = $prog.compile(Config::default()) else {
+            let Output::ExitCode(result) = $prog.compile(Config::default()) else {
                 panic!()
             };
             assert_eq!(result, $expected);
