@@ -565,7 +565,7 @@ impl<'ctx> Unit<'ctx> {
         name: &'ctx str,
         fun_name: &'static str,
         var: &str,
-        args: &Vec<&str>,
+        args: &[&str],
     ) {
         let term = self.lookup(var);
         let length_constant = self.context.i64_type().const_int(args.len() as u64, false);
