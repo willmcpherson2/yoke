@@ -1,57 +1,19 @@
 mod lir;
 
-use lir::*;
-
 fn main() {
-    let prog = Prog {
-        globals: vec![Global {
-            name: "True",
-            symbol: 1,
-            arity: 0,
-        }],
-        funs: vec![Fun {
-            name: "id",
-            arg_name: "self",
-            symbol: 2,
-            arity: 1,
-            block: Block(vec![
-                Op::LoadArg(LoadArg {
-                    name: "x",
-                    var: "self",
-                    index: 0,
-                }),
-                Op::FreeArgs(FreeArgs { var: "self" }),
-                Op::Eval(Eval {
-                    name: "x",
-                    var: "x",
-                }),
-                Op::Return(Return { var: "x" }),
-            ]),
-        }],
-        main: Block(vec![
-            Op::LoadGlobal(LoadGlobal {
-                name: "id",
-                global: "id",
-            }),
-            Op::LoadGlobal(LoadGlobal {
-                name: "True",
-                global: "True",
-            }),
-            Op::NewApp(NewApp {
-                name: "result",
-                var: "id",
-                args: vec!["True"],
-            }),
-            Op::Eval(Eval {
-                name: "result",
-                var: "result",
-            }),
-            Op::ReturnSymbol(ReturnSymbol { var: "result" }),
-        ]),
-    };
+    let args: Vec<String> = std::env::args().collect();
+    if args.len() < 2 {
+        eprintln!("Usage: {} <input_file>", args[0]);
+        std::process::exit(1);
+    }
 
-    dbg!(prog.compile(Config {
-        mode: Mode::Aot,
-        opt_level: OptLevel::O3,
-    }));
+    let input_file = &args[1];
+    let input = std::fs::read_to_string(input_file)
+        .unwrap_or_else(|_| panic!("Failed to read file: {}", input_file));
+
+    let program =
+        lir::parse::parse(&input).unwrap_or_else(|err| panic!("Failed to parse input: {}", err));
+
+    let output = program.compile(lir::compile::Config::default());
+    println!("{:?}", output);
 }

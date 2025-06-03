@@ -1,3 +1,4 @@
+use super::{Arity, Block, Global, Name, Op, Program, Symbol};
 use inkwell::{
     basic_block::BasicBlock,
     builder::Builder,
@@ -12,7 +13,7 @@ use inkwell::{
 };
 use std::{collections::HashMap, path::Path};
 
-const RTS_BC: &[u8] = include_bytes!("../../target/rts.bc");
+const RTS_BC: &[u8] = include_bytes!("../../../target/rts.bc");
 
 #[derive(Debug)]
 pub struct Config {
@@ -20,13 +21,10 @@ pub struct Config {
     pub opt_level: OptLevel,
 }
 
-impl Default for Config {
-    fn default() -> Self {
-        Self {
-            mode: Mode::Jit,
-            opt_level: OptLevel::O0,
-        }
-    }
+#[derive(Debug)]
+pub enum Mode {
+    Jit,
+    Aot,
 }
 
 #[derive(Debug)]
@@ -38,31 +36,36 @@ pub enum OptLevel {
 }
 
 #[derive(Debug)]
-pub enum Mode {
-    Jit,
-    Aot,
-}
-
-#[derive(Debug)]
 pub enum Output {
     ExitCode(i32),
     Binary,
 }
 
-pub type Name = &'static str;
-
-pub type Symbol = u32;
-
-pub type Arity = u16;
-
 #[derive(Debug)]
-pub struct Prog {
-    pub globals: Vec<Global>,
-    pub funs: Vec<Fun>,
-    pub main: Block,
+struct Unit<'ctx> {
+    config: Config,
+    machine: TargetMachine,
+    context: &'ctx Context,
+    module: Module<'ctx>,
+    builder: Builder<'ctx>,
+    term_type: StructType<'ctx>,
+    fun_type: FunctionType<'ctx>,
+    fun: Option<FunctionValue<'ctx>>,
+    block: Option<BasicBlock<'ctx>>,
+    arg: Option<PointerValue<'ctx>>,
+    locals: Vec<HashMap<Name, PointerValue<'ctx>>>,
 }
 
-impl Prog {
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            mode: Mode::Jit,
+            opt_level: OptLevel::O0,
+        }
+    }
+}
+
+impl Program {
     pub fn compile(&self, config: Config) -> Output {
         Target::initialize_all(&InitializationConfig::default());
         let triple = TargetMachine::get_default_triple();
@@ -114,8 +117,6 @@ impl Prog {
             .iter()
             .for_each(|global| global.compile(&mut unit));
 
-        self.funs.iter().for_each(|fun| fun.compile(&mut unit));
-
         self.compile_main(&mut unit);
 
         unit.opt();
@@ -150,55 +151,46 @@ impl Prog {
     }
 }
 
-#[derive(Debug)]
-pub struct Global {
-    pub name: Name,
-    pub symbol: Symbol,
-    pub arity: Arity,
-}
-
 impl Global {
     fn compile(&self, unit: &mut Unit) {
-        let noop = unit.module.get_function("noop").unwrap();
-        unit.add_global(noop, self.name, self.symbol, self.arity);
+        match self {
+            Global::Const {
+                name,
+                arity,
+                symbol,
+            } => {
+                let noop = unit.module.get_function("noop").unwrap();
+                unit.add_global(noop, name.clone(), *symbol, *arity);
+            }
+            Global::Fun {
+                name,
+                symbol,
+                arity,
+                block,
+            } => {
+                let fun = unit
+                    .module
+                    .add_function("", unit.fun_type, Some(Linkage::Internal));
+                unit.fun = Some(fun);
+
+                let basic_block = unit.context.append_basic_block(fun, "start");
+                unit.block = Some(basic_block);
+                unit.builder.position_at_end(basic_block);
+
+                unit.clear_locals();
+                unit.add_scope();
+
+                let arg = fun.get_first_param().unwrap().into_pointer_value();
+                unit.arg = Some(arg);
+                unit.define("self".to_string(), arg);
+
+                block.compile(unit);
+
+                unit.add_global(fun, name.clone(), *symbol, *arity);
+            }
+        }
     }
 }
-
-#[derive(Debug)]
-pub struct Fun {
-    pub name: Name,
-    pub arg_name: Name,
-    pub symbol: Symbol,
-    pub arity: Arity,
-    pub block: Block,
-}
-
-impl Fun {
-    fn compile(&self, unit: &mut Unit) {
-        let fun = unit
-            .module
-            .add_function("", unit.fun_type, Some(Linkage::Internal));
-        unit.fun = Some(fun);
-
-        let block = unit.context.append_basic_block(fun, "start");
-        unit.block = Some(block);
-        unit.builder.position_at_end(block);
-
-        unit.clear_locals();
-        unit.add_scope();
-
-        let arg = fun.get_first_param().unwrap().into_pointer_value();
-        unit.arg = Some(arg);
-        unit.define(self.arg_name, arg);
-
-        self.block.compile(unit);
-
-        unit.add_global(fun, self.name, self.symbol, self.arity);
-    }
-}
-
-#[derive(Debug)]
-pub struct Block(pub Vec<Op>);
 
 impl Block {
     fn compile(&self, unit: &mut Unit) {
@@ -206,105 +198,11 @@ impl Block {
     }
 }
 
-#[derive(Debug)]
-pub enum Op {
-    LoadGlobal(LoadGlobal),
-    LoadArg(LoadArg),
-    NewApp(NewApp),
-    NewPartial(NewPartial),
-    ApplyPartial(ApplyPartial),
-    Copy(Copy),
-    FreeArgs(FreeArgs),
-    FreeTerm(FreeTerm),
-    Eval(Eval),
-    Return(Return),
-    ReturnSymbol(ReturnSymbol),
-    Switch(Switch),
-}
-
-#[derive(Debug)]
-pub struct LoadGlobal {
-    pub name: Name,
-    pub global: Name,
-}
-
-#[derive(Debug)]
-pub struct LoadArg {
-    pub name: Name,
-    pub var: Name,
-    pub index: u64,
-}
-
-#[derive(Debug)]
-pub struct NewApp {
-    pub name: Name,
-    pub var: Name,
-    pub args: Vec<Name>,
-}
-
-#[derive(Debug)]
-pub struct NewPartial {
-    pub name: Name,
-    pub var: Name,
-    pub args: Vec<Name>,
-}
-
-#[derive(Debug)]
-pub struct ApplyPartial {
-    pub name: Name,
-    pub var: Name,
-    pub args: Vec<Name>,
-}
-
-#[derive(Debug)]
-pub struct Copy {
-    pub name: Name,
-    pub var: Name,
-}
-
-#[derive(Debug)]
-pub struct FreeArgs {
-    pub var: Name,
-}
-
-#[derive(Debug)]
-pub struct FreeTerm {
-    pub var: Name,
-}
-
-#[derive(Debug)]
-pub struct Eval {
-    pub name: Name,
-    pub var: Name,
-}
-
-#[derive(Debug)]
-pub struct Return {
-    pub var: Name,
-}
-
-#[derive(Debug)]
-pub struct ReturnSymbol {
-    pub var: Name,
-}
-
-#[derive(Debug)]
-pub struct Switch {
-    pub var: Name,
-    pub cases: Vec<Case>,
-}
-
-#[derive(Debug)]
-pub struct Case {
-    pub symbol: Symbol,
-    pub block: Block,
-}
-
 impl Op {
     fn compile(&self, unit: &mut Unit) {
-        match *self {
-            Op::LoadGlobal(LoadGlobal { name, global }) => {
-                let global = unit.module.get_global(global).unwrap();
+        match self {
+            Op::LoadGlobal { name, global } => {
+                let global = unit.module.get_global(&global).unwrap();
                 let global = unit
                     .builder
                     .build_load(unit.term_type, global.as_pointer_value(), "")
@@ -312,10 +210,10 @@ impl Op {
                 let alloca = unit.builder.build_alloca(unit.term_type, "").unwrap();
                 unit.builder.build_store(alloca, global).unwrap();
 
-                unit.define(name, alloca);
+                unit.define(name.clone(), alloca);
             }
-            Op::LoadArg(LoadArg { name, var, index }) => {
-                let term = unit.lookup(var);
+            Op::LoadArg { name, var, index } => {
+                let term = unit.lookup(&var);
 
                 let term_load = unit
                     .builder
@@ -327,7 +225,7 @@ impl Op {
                     .build_extract_value(term_load, 1, "")
                     .unwrap()
                     .into_pointer_value();
-                let arg_index = unit.context.i64_type().const_int(index, false);
+                let arg_index = unit.context.i64_type().const_int(*index, false);
                 let arg_ptr = unsafe {
                     unit.builder
                         .build_gep(unit.term_type, args_field, &[arg_index], "")
@@ -340,26 +238,26 @@ impl Op {
                 let arg_alloca = unit.builder.build_alloca(unit.term_type, "").unwrap();
                 unit.builder.build_store(arg_alloca, arg).unwrap();
 
-                unit.define(name, arg_alloca);
+                unit.define(name.clone(), arg_alloca);
             }
-            Op::NewApp(NewApp {
+            Op::NewApp {
                 name,
                 var,
                 ref args,
-            }) => unit.compile_apply_call(name, "new_app", var, args),
-            Op::NewPartial(NewPartial {
+            } => unit.compile_apply_call(name.clone(), "new_app", &var, args),
+            Op::NewPartial {
                 name,
                 var,
                 ref args,
-            }) => unit.compile_apply_call(name, "new_partial", var, args),
-            Op::ApplyPartial(ApplyPartial {
+            } => unit.compile_apply_call(name.clone(), "new_partial", &var, args),
+            Op::ApplyPartial {
                 name,
                 var,
                 ref args,
-            }) => unit.compile_apply_call(name, "apply_partial", var, args),
-            Op::Copy(Copy { name, var }) => {
+            } => unit.compile_apply_call(name.clone(), "apply_partial", &var, args),
+            Op::Copy { name, var } => {
                 let dest = unit.builder.build_alloca(unit.term_type, "").unwrap();
-                let src = unit.lookup(var);
+                let src = unit.lookup(&var);
                 let copy = unit.module.get_function("copy").unwrap();
                 unit.builder
                     .build_call(
@@ -372,24 +270,10 @@ impl Op {
                     )
                     .unwrap();
 
-                unit.define(name, dest);
+                unit.define(name.clone(), dest);
             }
-            Op::FreeArgs(FreeArgs { var }) => {
-                let term = unit.lookup(var);
-                let free_args = unit.module.get_function("free_args").unwrap();
-                unit.builder
-                    .build_call(free_args, &[BasicMetadataValueEnum::PointerValue(term)], "")
-                    .unwrap();
-            }
-            Op::FreeTerm(FreeTerm { var }) => {
-                let term = unit.lookup(var);
-                let free_term = unit.module.get_function("free_term").unwrap();
-                unit.builder
-                    .build_call(free_term, &[BasicMetadataValueEnum::PointerValue(term)], "")
-                    .unwrap();
-            }
-            Op::Eval(Eval { name, var }) => {
-                let term = unit.lookup(var);
+            Op::Eval { name, var } => {
+                let term = unit.lookup(&var);
                 let term_load = unit
                     .builder
                     .build_load(unit.term_type, term, "")
@@ -404,18 +288,32 @@ impl Op {
                     .build_indirect_call(unit.fun_type, fun, &[term.into()], "")
                     .unwrap();
 
-                unit.define(name, term);
+                unit.define(name.clone(), term);
             }
-            Op::Return(Return { var }) => {
-                let term = unit.lookup(var);
+            Op::FreeArgs { var } => {
+                let term = unit.lookup(&var);
+                let free_args = unit.module.get_function("free_args").unwrap();
+                unit.builder
+                    .build_call(free_args, &[BasicMetadataValueEnum::PointerValue(term)], "")
+                    .unwrap();
+            }
+            Op::FreeTerm { var } => {
+                let term = unit.lookup(&var);
+                let free_term = unit.module.get_function("free_term").unwrap();
+                unit.builder
+                    .build_call(free_term, &[BasicMetadataValueEnum::PointerValue(term)], "")
+                    .unwrap();
+            }
+            Op::Return { var } => {
+                let term = unit.lookup(&var);
                 let term_load = unit.builder.build_load(unit.term_type, term, "").unwrap();
                 unit.builder
                     .build_store(unit.arg.unwrap(), term_load)
                     .unwrap();
                 unit.builder.build_return(None).unwrap();
             }
-            Op::ReturnSymbol(ReturnSymbol { var }) => {
-                let term = unit.lookup(var);
+            Op::ReturnSymbol { var } => {
+                let term = unit.lookup(&var);
                 let term_load = unit
                     .builder
                     .build_load(unit.term_type, term, "")
@@ -424,8 +322,8 @@ impl Op {
                 let symbol = unit.builder.build_extract_value(term_load, 2, "").unwrap();
                 unit.builder.build_return(Some(&symbol)).unwrap();
             }
-            Op::Switch(Switch { var, ref cases }) => {
-                let term = unit.lookup(var);
+            Op::Switch { var, ref cases } => {
+                let term = unit.lookup(&var);
                 let term_load = unit
                     .builder
                     .build_load(unit.term_type, term, "")
@@ -462,23 +360,11 @@ impl Op {
                     .build_switch(symbol, default_case, &cases)
                     .unwrap();
             }
+            Op::Abort => {
+                todo!()
+            }
         }
     }
-}
-
-#[derive(Debug)]
-struct Unit<'ctx> {
-    config: Config,
-    machine: TargetMachine,
-    context: &'ctx Context,
-    module: Module<'ctx>,
-    builder: Builder<'ctx>,
-    term_type: StructType<'ctx>,
-    fun_type: FunctionType<'ctx>,
-    fun: Option<FunctionValue<'ctx>>,
-    block: Option<BasicBlock<'ctx>>,
-    arg: Option<PointerValue<'ctx>>,
-    locals: Vec<HashMap<&'ctx str, PointerValue<'ctx>>>,
 }
 
 impl<'ctx> Unit<'ctx> {
@@ -486,7 +372,7 @@ impl<'ctx> Unit<'ctx> {
         self.locals.push(HashMap::new())
     }
 
-    fn define(&mut self, name: &'ctx str, value: PointerValue<'ctx>) {
+    fn define(&mut self, name: Name, value: PointerValue<'ctx>) {
         self.locals.last_mut().unwrap().insert(name, value);
     }
 
@@ -520,7 +406,7 @@ impl<'ctx> Unit<'ctx> {
 
         let global = self
             .module
-            .add_global(term_type, Some(AddressSpace::from(0)), name);
+            .add_global(term_type, Some(AddressSpace::from(0)), &name);
         global.set_constant(true);
         global.set_linkage(Linkage::Internal);
         global.set_initializer(&struct_val);
@@ -559,13 +445,7 @@ impl<'ctx> Unit<'ctx> {
         println!("{}", s);
     }
 
-    fn compile_apply_call(
-        &mut self,
-        name: &'ctx str,
-        fun_name: &'static str,
-        var: &str,
-        args: &[&str],
-    ) {
+    fn compile_apply_call(&mut self, name: Name, fun_name: &str, var: &str, args: &[String]) {
         let term = self.lookup(var);
         let length_constant = self.context.i64_type().const_int(args.len() as u64, false);
         let args_type = self.term_type.array_type(args.len() as u32);
@@ -604,6 +484,7 @@ impl<'ctx> Unit<'ctx> {
 #[cfg(test)]
 mod test {
     use super::*;
+    use crate::lir::Case;
 
     macro_rules! test {
         ($prog:expr, $expected:expr) => {
@@ -617,19 +498,20 @@ mod test {
     #[test]
     fn test_return_symbol() {
         test!(
-            Prog {
-                globals: vec![Global {
-                    name: "True",
-                    symbol: 1,
+            Program {
+                globals: vec![Global::Const {
+                    name: "True".to_string(),
                     arity: 0,
+                    symbol: 1,
                 }],
-                funs: vec![],
                 main: Block(vec![
-                    Op::LoadGlobal(LoadGlobal {
-                        name: "True",
-                        global: "True",
-                    }),
-                    Op::ReturnSymbol(ReturnSymbol { var: "True" }),
+                    Op::LoadGlobal {
+                        name: "True".to_string(),
+                        global: "True".to_string(),
+                    },
+                    Op::ReturnSymbol {
+                        var: "True".to_string()
+                    },
                 ]),
             },
             1
@@ -639,24 +521,27 @@ mod test {
     #[test]
     fn test_copy() {
         test!(
-            Prog {
-                globals: vec![Global {
-                    name: "True",
-                    symbol: 1,
+            Program {
+                globals: vec![Global::Const {
+                    name: "True".to_string(),
                     arity: 0,
+                    symbol: 1,
                 }],
-                funs: vec![],
                 main: Block(vec![
-                    Op::LoadGlobal(LoadGlobal {
-                        name: "True",
-                        global: "True",
-                    }),
-                    Op::Copy(Copy {
-                        name: "x",
-                        var: "True",
-                    }),
-                    Op::FreeTerm(FreeTerm { var: "x" }),
-                    Op::ReturnSymbol(ReturnSymbol { var: "x" }),
+                    Op::LoadGlobal {
+                        name: "True".to_string(),
+                        global: "True".to_string(),
+                    },
+                    Op::Copy {
+                        name: "x".to_string(),
+                        var: "True".to_string(),
+                    },
+                    Op::FreeTerm {
+                        var: "x".to_string()
+                    },
+                    Op::ReturnSymbol {
+                        var: "x".to_string()
+                    },
                 ]),
             },
             1
@@ -666,50 +551,57 @@ mod test {
     #[test]
     fn test_id() {
         test!(
-            Prog {
-                globals: vec![Global {
-                    name: "True",
-                    symbol: 1,
-                    arity: 0,
-                }],
-                funs: vec![Fun {
-                    name: "id",
-                    arg_name: "self",
-                    symbol: 2,
-                    arity: 1,
-                    block: Block(vec![
-                        Op::LoadArg(LoadArg {
-                            name: "x",
-                            var: "self",
-                            index: 0,
-                        }),
-                        Op::FreeArgs(FreeArgs { var: "self" }),
-                        Op::Eval(Eval {
-                            name: "x",
-                            var: "x",
-                        }),
-                        Op::Return(Return { var: "x" }),
-                    ]),
-                }],
+            Program {
+                globals: vec![
+                    Global::Const {
+                        name: "True".to_string(),
+                        arity: 0,
+                        symbol: 1,
+                    },
+                    Global::Fun {
+                        name: "id".to_string(),
+                        symbol: 2,
+                        arity: 1,
+                        block: Block(vec![
+                            Op::LoadArg {
+                                name: "x".to_string(),
+                                var: "self".to_string(),
+                                index: 0,
+                            },
+                            Op::FreeArgs {
+                                var: "self".to_string()
+                            },
+                            Op::Eval {
+                                name: "x".to_string(),
+                                var: "x".to_string(),
+                            },
+                            Op::Return {
+                                var: "x".to_string()
+                            },
+                        ]),
+                    }
+                ],
                 main: Block(vec![
-                    Op::LoadGlobal(LoadGlobal {
-                        name: "id",
-                        global: "id",
-                    }),
-                    Op::LoadGlobal(LoadGlobal {
-                        name: "True",
-                        global: "True",
-                    }),
-                    Op::NewApp(NewApp {
-                        name: "result",
-                        var: "id",
-                        args: vec!["True"]
-                    }),
-                    Op::Eval(Eval {
-                        name: "result",
-                        var: "result",
-                    }),
-                    Op::ReturnSymbol(ReturnSymbol { var: "result" }),
+                    Op::LoadGlobal {
+                        name: "id".to_string(),
+                        global: "id".to_string(),
+                    },
+                    Op::LoadGlobal {
+                        name: "True".to_string(),
+                        global: "True".to_string(),
+                    },
+                    Op::NewApp {
+                        name: "result".to_string(),
+                        var: "id".to_string(),
+                        args: vec!["True".to_string()]
+                    },
+                    Op::Eval {
+                        name: "result".to_string(),
+                        var: "result".to_string(),
+                    },
+                    Op::ReturnSymbol {
+                        var: "result".to_string()
+                    },
                 ]),
             },
             1
@@ -719,42 +611,45 @@ mod test {
     #[test]
     fn test_switch() {
         test!(
-            Prog {
+            Program {
                 globals: vec![
-                    Global {
-                        name: "True",
+                    Global::Const {
+                        name: "True".to_string(),
+                        arity: 0,
                         symbol: 1,
-                        arity: 0,
                     },
-                    Global {
-                        name: "False",
-                        symbol: 2,
+                    Global::Const {
+                        name: "False".to_string(),
                         arity: 0,
+                        symbol: 2,
                     },
                 ],
-                funs: vec![],
                 main: Block(vec![
-                    Op::LoadGlobal(LoadGlobal {
-                        name: "True",
-                        global: "True",
-                    }),
-                    Op::LoadGlobal(LoadGlobal {
-                        name: "False",
-                        global: "False",
-                    }),
-                    Op::Switch(Switch {
-                        var: "True",
+                    Op::LoadGlobal {
+                        name: "True".to_string(),
+                        global: "True".to_string(),
+                    },
+                    Op::LoadGlobal {
+                        name: "False".to_string(),
+                        global: "False".to_string(),
+                    },
+                    Op::Switch {
+                        var: "True".to_string(),
                         cases: vec![
                             Case {
                                 symbol: 1,
-                                block: Block(vec![Op::ReturnSymbol(ReturnSymbol { var: "False" })])
+                                block: Block(vec![Op::ReturnSymbol {
+                                    var: "False".to_string()
+                                }])
                             },
                             Case {
                                 symbol: 2,
-                                block: Block(vec![Op::ReturnSymbol(ReturnSymbol { var: "True" })])
+                                block: Block(vec![Op::ReturnSymbol {
+                                    var: "True".to_string()
+                                }])
                             },
                         ],
-                    }),
+                    },
                 ]),
             },
             2
