@@ -6,5 +6,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+chumsky = { version = "0.10.1", features = ["regex"] }
 inkwell = { version = "0.5.0", features = ["llvm18-0"] }
-nom = "8.0.0"

@@ -7,13 +7,15 @@ pub type Symbol = u32;
 
 pub type Arity = u16;
 
-#[derive(Debug)]
+pub type Index = u64;
+
+#[derive(Debug, PartialEq)]
 pub struct Program {
     pub globals: Vec<Global>,
     pub main: Block,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Global {
     Const {
         name: Name,
@@ -22,16 +24,15 @@ pub enum Global {
     },
     Fun {
         name: Name,
-        symbol: Symbol,
         arity: Arity,
         block: Block,
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Block(pub Vec<Op>);
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum Op {
     LoadGlobal {
         name: Name,
@@ -40,7 +41,7 @@ pub enum Op {
     LoadArg {
         name: Name,
         var: Name,
-        index: u64,
+        index: Index,
     },
     NewApp {
         name: Name,
@@ -71,10 +72,10 @@ pub enum Op {
     FreeTerm {
         var: Name,
     },
-    Return {
+    ReturnSymbol {
         var: Name,
     },
-    ReturnSymbol {
+    Return {
         var: Name,
     },
     Switch {
@@ -84,7 +85,7 @@ pub enum Op {
     Abort,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Case {
     pub symbol: Symbol,
     pub block: Block,

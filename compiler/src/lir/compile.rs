@@ -162,12 +162,7 @@ impl Global {
                 let noop = unit.module.get_function("noop").unwrap();
                 unit.add_global(noop, name.clone(), *symbol, *arity);
             }
-            Global::Fun {
-                name,
-                symbol,
-                arity,
-                block,
-            } => {
+            Global::Fun { name, arity, block } => {
                 let fun = unit
                     .module
                     .add_function("", unit.fun_type, Some(Linkage::Internal));
@@ -186,7 +181,7 @@ impl Global {
 
                 block.compile(unit);
 
-                unit.add_global(fun, name.clone(), *symbol, *arity);
+                unit.add_global(fun, name.clone(), 0, *arity);
             }
         }
     }
@@ -304,14 +299,6 @@ impl Op {
                     .build_call(free_term, &[BasicMetadataValueEnum::PointerValue(term)], "")
                     .unwrap();
             }
-            Op::Return { var } => {
-                let term = unit.lookup(&var);
-                let term_load = unit.builder.build_load(unit.term_type, term, "").unwrap();
-                unit.builder
-                    .build_store(unit.arg.unwrap(), term_load)
-                    .unwrap();
-                unit.builder.build_return(None).unwrap();
-            }
             Op::ReturnSymbol { var } => {
                 let term = unit.lookup(&var);
                 let term_load = unit
@@ -321,6 +308,14 @@ impl Op {
                     .into_struct_value();
                 let symbol = unit.builder.build_extract_value(term_load, 2, "").unwrap();
                 unit.builder.build_return(Some(&symbol)).unwrap();
+            }
+            Op::Return { var } => {
+                let term = unit.lookup(&var);
+                let term_load = unit.builder.build_load(unit.term_type, term, "").unwrap();
+                unit.builder
+                    .build_store(unit.arg.unwrap(), term_load)
+                    .unwrap();
+                unit.builder.build_return(None).unwrap();
             }
             Op::Switch { var, ref cases } => {
                 let term = unit.lookup(&var);
@@ -560,7 +555,6 @@ mod test {
                     },
                     Global::Fun {
                         name: "id".to_string(),
-                        symbol: 2,
                         arity: 1,
                         block: Block(vec![
                             Op::LoadArg {

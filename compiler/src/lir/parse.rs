@@ -1,37 +1,27 @@
-use crate::lir::{Block, Case, Global, Op, Program};
-use nom::{
-    branch::alt,
-    bytes::complete::tag,
-    character::complete::{alphanumeric1, digit1, multispace0, multispace1},
-    combinator::{map, map_res},
-    multi::{many0, separated_list0},
-    sequence::{delimited, preceded},
-    IResult, Parser,
-};
+use super::{Arity, Block, Case, Global, Index, Name, Op, Program, Symbol};
+use chumsky::{extra::Err, prelude::*};
+use text::{ascii::ident, whitespace};
 
 pub fn parse(input: &str) -> Result<Program, String> {
-    match program(input) {
-        Ok((remaining, prog)) => {
-            if remaining.trim().is_empty() {
-                Ok(prog)
-            } else {
-                Err(format!("Unexpected input: {}", remaining))
-            }
-        }
-        Err(e) => Err(format!("Parse error: {}", e)),
-    }
+    program()
+        .parse(input)
+        .into_result()
+        .map_err(|errors| format!("{:?}", errors))
 }
 
-fn program(input: &str) -> IResult<&str, Program> {
-    map_res(many0(ws(global)), |globals| {
-        let (main, globals) = get_main(globals);
-        if let Some(main) = main {
-            Ok(Program { main, globals })
-        } else {
-            Err("No main function defined")
-        }
-    })
-    .parse(input)
+fn program<'a>() -> impl Parser<'a, &'a str, Program, Err<Rich<'a, char>>> {
+    global()
+        .separated_by(whitespace())
+        .collect::<Vec<Global>>()
+        .padded()
+        .try_map(|globals, span| {
+            let (main, globals) = get_main(globals);
+            if let Some(main) = main {
+                Ok(Program { main, globals })
+            } else {
+                Err(Rich::custom(span, "main function not found"))
+            }
+        })
 }
 
 fn get_main(globals: Vec<Global>) -> (Option<Block>, Vec<Global>) {
@@ -46,177 +36,238 @@ fn get_main(globals: Vec<Global>) -> (Option<Block>, Vec<Global>) {
         })
 }
 
-fn global(input: &str) -> IResult<&str, Global> {
-    alt((
-        map(
-            (
-                tag("const"),
-                multispace1,
-                var,
-                multispace1,
-                int16,
-                multispace1,
-                int32,
-            ),
-            |(_, _, name, _, arity, _, symbol)| Global::Const {
+fn global<'a>() -> impl Parser<'a, &'a str, Global, Err<Rich<'a, char>>> {
+    choice((
+        just("const")
+            .then_ignore(whitespace())
+            .then(name())
+            .then_ignore(whitespace())
+            .then(arity())
+            .then_ignore(whitespace())
+            .then(symbol())
+            .map(|(((_, name), arity), symbol)| Global::Const {
                 name,
                 arity,
                 symbol,
-            },
-        ),
-        map(
-            (
-                tag("fun"),
-                multispace1,
-                var,
-                multispace1,
-                int16,
-                multispace1,
-                delimited(ws(tag("{")), many0(ws(op)), ws(tag("}"))),
-            ),
-            |(_, _, name, _, arity, _, ops)| Global::Fun {
-                name,
-                symbol: 0,
-                arity,
-                block: Block(ops),
-            },
-        ),
+            }),
+        just("fun")
+            .then_ignore(whitespace())
+            .then(name())
+            .then_ignore(whitespace())
+            .then(arity())
+            .then_ignore(whitespace())
+            .then(block())
+            .map(|(((_, name), arity), block)| Global::Fun { name, arity, block }),
     ))
-    .parse(input)
 }
 
-fn op(input: &str) -> IResult<&str, Op> {
-    alt((
-        map(
-            (tag("load_global"), multispace1, var, multispace1, var),
-            |(_, _, name, _, global)| Op::LoadGlobal { name, global },
-        ),
-        map(
-            (
-                tag("load_arg"),
-                multispace1,
-                var,
-                multispace1,
-                var,
-                multispace1,
-                int64,
-            ),
-            |(_, _, name, _, var, _, index)| Op::LoadArg { name, var, index },
-        ),
-        map(
-            (
-                tag("new_app"),
-                multispace1,
-                var,
-                multispace1,
-                var,
-                multispace1,
-                vars,
-            ),
-            |(_, _, name, _, var, _, args)| Op::NewApp { name, var, args },
-        ),
-        map(
-            (
-                tag("new_partial"),
-                multispace1,
-                var,
-                multispace1,
-                var,
-                multispace1,
-                vars,
-            ),
-            |(_, _, name, _, var, _, args)| Op::NewPartial { name, var, args },
-        ),
-        map(
-            (
-                tag("apply_partial"),
-                multispace1,
-                var,
-                multispace1,
-                var,
-                multispace1,
-                vars,
-            ),
-            |(_, _, name, _, var, _, args)| Op::ApplyPartial { name, var, args },
-        ),
-        map(
-            (tag("copy"), multispace1, var, multispace1, var),
-            |(_, _, name, _, var)| Op::Copy { name, var },
-        ),
-        map(
-            (tag("eval"), multispace1, var, multispace1, var),
-            |(_, _, name, _, var)| Op::Eval { name, var },
-        ),
-        map(preceded((tag("free_args"), multispace1), var), |var| {
-            Op::FreeArgs { var }
-        }),
-        map(preceded((tag("free_term"), multispace1), var), |var| {
-            Op::FreeTerm { var }
-        }),
-        map(preceded((tag("return"), multispace1), var), |var| {
-            Op::Return { var }
-        }),
-        map(preceded((tag("return_symbol"), multispace1), var), |var| {
-            Op::ReturnSymbol { var }
-        }),
-        map(
-            (
-                tag("switch"),
-                multispace1,
-                var,
-                multispace1,
-                delimited(ws(tag("{")), many0(ws(case)), ws(tag("}"))),
-            ),
-            |(_, _, var, _, cases)| Op::Switch { var, cases },
-        ),
-        map(tag("abort"), |_| Op::Abort),
-    ))
-    .parse(input)
+fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
+    recursive(|block| {
+        let case = symbol()
+            .then_ignore(whitespace())
+            .then(block)
+            .map(|(symbol, block)| Case { symbol, block });
+
+        let cases = just('{')
+            .then_ignore(whitespace())
+            .then(case.separated_by(whitespace()).collect::<Vec<Case>>())
+            .then_ignore(whitespace())
+            .then_ignore(just('}'))
+            .map(|(_, cases)| cases);
+
+        let op = choice((
+            just("load_global")
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(name())
+                .map(|((_, name), global)| Op::LoadGlobal { name, global }),
+            just("load_arg")
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(index())
+                .map(|(((_, name), var), index)| Op::LoadArg { name, var, index }),
+            just("new_app")
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(vars())
+                .map(|(((_, name), var), args)| Op::NewApp { name, var, args }),
+            just("new_partial")
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(vars())
+                .map(|(((_, name), var), args)| Op::NewPartial { name, var, args }),
+            just("apply_partial")
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(vars())
+                .map(|(((_, name), var), args)| Op::ApplyPartial { name, var, args }),
+            just("copy")
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(name())
+                .map(|((_, name), var)| Op::Copy { name, var }),
+            just("eval")
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(name())
+                .map(|((_, name), var)| Op::Eval { name, var }),
+            just("free_args")
+                .then_ignore(whitespace())
+                .then(name())
+                .map(|(_, var)| Op::FreeArgs { var }),
+            just("free_term")
+                .then_ignore(whitespace())
+                .then(name())
+                .map(|(_, var)| Op::FreeTerm { var }),
+            just("return_symbol")
+                .then_ignore(whitespace())
+                .then(name())
+                .map(|(_, var)| Op::ReturnSymbol { var }),
+            just("return")
+                .then_ignore(whitespace())
+                .then(name())
+                .map(|(_, var)| Op::Return { var }),
+            just("switch")
+                .then_ignore(whitespace())
+                .then(name())
+                .then_ignore(whitespace())
+                .then(cases)
+                .map(|((_, var), cases)| Op::Switch { var, cases }),
+            just("abort").map(|_| Op::Abort),
+        ));
+
+        just('{')
+            .then_ignore(whitespace())
+            .then(op.separated_by(whitespace()).collect::<Vec<Op>>())
+            .then_ignore(whitespace())
+            .then_ignore(just('}'))
+            .map(|(_, ops)| Block(ops))
+            .boxed()
+    })
 }
 
-fn case(input: &str) -> IResult<&str, Case> {
-    map(
-        (
-            int32,
-            multispace1,
-            delimited(ws(tag("{")), many0(ws(op)), ws(tag("}"))),
-        ),
-        |(symbol, _, ops)| Case {
-            symbol,
-            block: Block(ops),
-        },
-    )
-    .parse(input)
+fn vars<'a>() -> impl Parser<'a, &'a str, Vec<Name>, Err<Rich<'a, char>>> {
+    just('{')
+        .then_ignore(whitespace())
+        .then(name().separated_by(whitespace()).collect::<Vec<Name>>())
+        .then_ignore(whitespace())
+        .then_ignore(just('}'))
+        .map(|(_, vars)| vars)
 }
 
-fn vars(input: &str) -> IResult<&str, Vec<String>> {
-    delimited(
-        ws(tag("{")),
-        separated_list0(multispace1, var),
-        ws(tag("}")),
-    )
-    .parse(input)
+fn name<'a>() -> impl Parser<'a, &'a str, Name, Err<Rich<'a, char>>> {
+    ident().map(|s: &str| s.to_string())
 }
 
-fn var(input: &str) -> IResult<&str, String> {
-    map(alphanumeric1, |s: &str| s.to_string()).parse(input)
+fn arity<'a>() -> impl Parser<'a, &'a str, Arity, Err<Rich<'a, char>>> {
+    text::int(10).try_map(|s: &str, span| s.parse::<Arity>().map_err(|e| Rich::custom(span, e)))
 }
 
-fn int16(input: &str) -> IResult<&str, u16> {
-    map_res(digit1, |s: &str| s.parse::<u16>()).parse(input)
+fn symbol<'a>() -> impl Parser<'a, &'a str, Symbol, Err<Rich<'a, char>>> {
+    text::int(10).try_map(|s: &str, span| s.parse::<Symbol>().map_err(|e| Rich::custom(span, e)))
 }
 
-fn int32(input: &str) -> IResult<&str, u32> {
-    map_res(digit1, |s: &str| s.parse::<u32>()).parse(input)
+fn index<'a>() -> impl Parser<'a, &'a str, Index, Err<Rich<'a, char>>> {
+    text::int(10).try_map(|s: &str, span| s.parse::<Index>().map_err(|e| Rich::custom(span, e)))
 }
 
-fn int64(input: &str) -> IResult<&str, u64> {
-    map_res(digit1, |s: &str| s.parse::<u64>()).parse(input)
-}
+#[cfg(test)]
+mod test {
+    use super::*;
 
-fn ws<'a, F, O>(inner: F) -> impl Parser<&'a str, Output = O, Error = nom::error::Error<&'a str>>
-where
-    F: FnMut(&'a str) -> IResult<&'a str, O>,
-{
-    delimited(multispace0, inner, multispace0)
+    #[test]
+    fn test_program() {
+        let result = program().parse("fun main 0 {}");
+        assert_eq!(
+            result.unwrap(),
+            Program {
+                globals: vec![],
+                main: Block(vec![]),
+            }
+        );
+    }
+
+    #[test]
+    fn test_global() {
+        let result = global().parse("const True 0 1");
+        assert_eq!(
+            result.unwrap(),
+            Global::Const {
+                name: "True".to_string(),
+                arity: 0,
+                symbol: 1
+            }
+        );
+
+        let result = global().parse("fun f 1 { return x }");
+        assert_eq!(
+            result.unwrap(),
+            Global::Fun {
+                name: "f".to_string(),
+                arity: 1,
+                block: Block(vec![Op::Return {
+                    var: "x".to_string()
+                }]),
+            }
+        );
+    }
+
+    #[test]
+    fn test_block() {
+        let result = block().parse("{ return x }");
+        assert_eq!(
+            result.unwrap(),
+            Block(vec![Op::Return {
+                var: "x".to_string()
+            }])
+        );
+
+        let result = block().parse(
+            r"{
+                switch x {
+                    0 {
+                        return a
+                    }
+                    1 {
+                        return b
+                    }
+                }
+            }",
+        );
+        assert_eq!(
+            result.unwrap(),
+            Block(vec![Op::Switch {
+                var: "x".to_string(),
+                cases: vec![
+                    Case {
+                        symbol: 0,
+                        block: Block(vec![Op::Return {
+                            var: "a".to_string()
+                        },])
+                    },
+                    Case {
+                        symbol: 1,
+                        block: Block(vec![Op::Return {
+                            var: "b".to_string()
+                        },])
+                    },
+                ],
+            }])
+        );
+    }
 }
