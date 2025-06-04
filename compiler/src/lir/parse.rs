@@ -69,12 +69,11 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
             .map(|(symbol, block)| Case { symbol, block })
             .boxed();
 
-        let cases = just('{')
-            .then_ignore(whitespace())
-            .then(case.separated_by(whitespace()).collect::<Vec<Case>>())
-            .then_ignore(whitespace())
-            .then_ignore(just('}'))
-            .map(|(_, cases)| cases)
+        let cases = case
+            .separated_by(whitespace())
+            .collect::<Vec<Case>>()
+            .padded()
+            .delimited_by(just('{'), just('}'))
             .boxed();
 
         let op = choice((
@@ -154,23 +153,21 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
         ))
         .boxed();
 
-        just('{')
-            .then_ignore(whitespace())
-            .then(op.separated_by(whitespace()).collect::<Vec<Op>>())
-            .then_ignore(whitespace())
-            .then_ignore(just('}'))
-            .map(|(_, ops)| Block(ops))
+        op.separated_by(whitespace())
+            .collect::<Vec<Op>>()
+            .padded()
+            .delimited_by(just('{'), just('}'))
+            .map(Block)
             .boxed()
     })
 }
 
 fn vars<'a>() -> impl Parser<'a, &'a str, Vec<Name>, Err<Rich<'a, char>>> {
-    just('{')
-        .then_ignore(whitespace())
-        .then(name().separated_by(whitespace()).collect::<Vec<Name>>())
-        .then_ignore(whitespace())
-        .then_ignore(just('}'))
-        .map(|(_, vars)| vars)
+    name()
+        .separated_by(whitespace())
+        .collect::<Vec<Name>>()
+        .padded()
+        .delimited_by(just('{'), just('}'))
 }
 
 fn name<'a>() -> impl Parser<'a, &'a str, Name, Err<Rich<'a, char>>> {
