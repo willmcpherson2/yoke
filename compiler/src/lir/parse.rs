@@ -66,14 +66,16 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
         let case = symbol()
             .then_ignore(whitespace())
             .then(block)
-            .map(|(symbol, block)| Case { symbol, block });
+            .map(|(symbol, block)| Case { symbol, block })
+            .boxed();
 
         let cases = just('{')
             .then_ignore(whitespace())
             .then(case.separated_by(whitespace()).collect::<Vec<Case>>())
             .then_ignore(whitespace())
             .then_ignore(just('}'))
-            .map(|(_, cases)| cases);
+            .map(|(_, cases)| cases)
+            .boxed();
 
         let op = choice((
             just("load_global")
@@ -149,7 +151,8 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
                 .then(cases)
                 .map(|((_, var), cases)| Op::Switch { var, cases }),
             just("abort").map(|_| Op::Abort),
-        ));
+        ))
+        .boxed();
 
         just('{')
             .then_ignore(whitespace())
