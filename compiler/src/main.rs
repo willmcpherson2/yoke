@@ -8,11 +8,21 @@ fn main() {
     }
 
     let input_file = &args[1];
-    let input = std::fs::read_to_string(input_file)
-        .unwrap_or_else(|_| panic!("Failed to read file: {}", input_file));
+    let input = match std::fs::read_to_string(input_file) {
+        Ok(input) => input,
+        Err(e) => {
+            eprintln!("Failed to read file: {}", e);
+            std::process::exit(2);
+        }
+    };
 
-    let program =
-        lir::parse::parse(&input).unwrap_or_else(|err| panic!("Failed to parse input: {}", err));
+    let program = match lir::parse::parse(&input) {
+        Ok(program) => program,
+        Err(e) => {
+            eprintln!("Failed to parse program: {}", e);
+            std::process::exit(3);
+        }
+    };
 
     let output = program.compile(lir::compile::Config::default());
     println!("{:?}", output);

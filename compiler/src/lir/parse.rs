@@ -14,26 +14,23 @@ fn program<'a>() -> impl Parser<'a, &'a str, Program, Err<Rich<'a, char>>> {
         .separated_by(whitespace())
         .collect::<Vec<Global>>()
         .padded()
-        .try_map(|globals, span| {
-            let (main, globals) = get_main(globals);
-            if let Some(main) = main {
-                Ok(Program { main, globals })
-            } else {
-                Err(Rich::custom(span, "main function not found"))
-            }
-        })
+        .map(globals_to_program)
 }
 
-fn get_main(globals: Vec<Global>) -> (Option<Block>, Vec<Global>) {
-    globals
-        .into_iter()
-        .fold((None, vec![]), |(main, mut globals), global| match global {
-            Global::Fun { name, block, .. } if name == "main" => (Some(block), globals),
-            global => {
-                globals.push(global);
-                (main, globals)
-            }
-        })
+fn globals_to_program(globals: Vec<Global>) -> Program {
+    let mut program = Program {
+        globals: vec![],
+        main: Block(vec![]),
+    };
+
+    for global in globals {
+        match global {
+            Global::Fun { name, block, .. } if name == "main" => program.main = block,
+            _ => program.globals.push(global),
+        }
+    }
+
+    program
 }
 
 fn global<'a>() -> impl Parser<'a, &'a str, Global, Err<Rich<'a, char>>> {
