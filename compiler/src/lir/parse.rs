@@ -15,6 +15,7 @@ fn program<'a>() -> impl Parser<'a, &'a str, Program, Err<Rich<'a, char>>> {
         .collect::<Vec<Global>>()
         .padded()
         .map(globals_to_program)
+        .labelled("program")
 }
 
 fn globals_to_program(globals: Vec<Global>) -> Program {
@@ -56,6 +57,7 @@ fn global<'a>() -> impl Parser<'a, &'a str, Global, Err<Rich<'a, char>>> {
             .then(block())
             .map(|(((_, name), arity), block)| Global::Fun { name, arity, block }),
     ))
+    .labelled("global")
 }
 
 fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
@@ -63,13 +65,15 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
         let case = symbol()
             .then_ignore(whitespace())
             .then(block)
-            .map(|(symbol, block)| Case { symbol, block });
+            .map(|(symbol, block)| Case { symbol, block })
+            .labelled("case");
 
         let cases = case
             .separated_by(whitespace())
             .collect::<Vec<Case>>()
             .padded()
-            .delimited_by(just('{'), just('}'));
+            .delimited_by(just('{'), just('}'))
+            .labelled("cases");
 
         let op = choice((
             just("load_global")
@@ -92,7 +96,7 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
                 .then_ignore(whitespace())
                 .then(name())
                 .then_ignore(whitespace())
-                .then(vars())
+                .then(args())
                 .map(|(((_, name), var), args)| Op::NewApp { name, var, args }),
             just("new_partial")
                 .then_ignore(whitespace())
@@ -100,7 +104,7 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
                 .then_ignore(whitespace())
                 .then(name())
                 .then_ignore(whitespace())
-                .then(vars())
+                .then(args())
                 .map(|(((_, name), var), args)| Op::NewPartial { name, var, args }),
             just("apply_partial")
                 .then_ignore(whitespace())
@@ -108,7 +112,7 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
                 .then_ignore(whitespace())
                 .then(name())
                 .then_ignore(whitespace())
-                .then(vars())
+                .then(args())
                 .map(|(((_, name), var), args)| Op::ApplyPartial { name, var, args }),
             just("copy")
                 .then_ignore(whitespace())
@@ -145,39 +149,48 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
                 .then(cases)
                 .map(|((_, var), cases)| Op::Switch { var, cases }),
             just("abort").map(|_| Op::Abort),
-        ));
+        ))
+        .labelled("instruction");
 
         op.separated_by(whitespace())
             .collect::<Vec<Op>>()
             .padded()
             .delimited_by(just('{'), just('}'))
             .map(Block)
+            .labelled("block")
             .boxed()
     })
 }
 
-fn vars<'a>() -> impl Parser<'a, &'a str, Vec<Name>, Err<Rich<'a, char>>> {
+fn args<'a>() -> impl Parser<'a, &'a str, Vec<Name>, Err<Rich<'a, char>>> {
     name()
         .separated_by(whitespace())
         .collect::<Vec<Name>>()
         .padded()
         .delimited_by(just('{'), just('}'))
+        .labelled("args")
 }
 
 fn name<'a>() -> impl Parser<'a, &'a str, Name, Err<Rich<'a, char>>> {
-    ident().map(|s: &str| s.to_string())
+    ident().map(|s: &str| s.to_string()).labelled("name")
 }
 
 fn arity<'a>() -> impl Parser<'a, &'a str, Arity, Err<Rich<'a, char>>> {
-    text::int(10).try_map(|s: &str, span| s.parse::<Arity>().map_err(|e| Rich::custom(span, e)))
+    text::int(10)
+        .try_map(|s: &str, span| s.parse::<Arity>().map_err(|e| Rich::custom(span, e)))
+        .labelled("arity")
 }
 
 fn symbol<'a>() -> impl Parser<'a, &'a str, Symbol, Err<Rich<'a, char>>> {
-    text::int(10).try_map(|s: &str, span| s.parse::<Symbol>().map_err(|e| Rich::custom(span, e)))
+    text::int(10)
+        .try_map(|s: &str, span| s.parse::<Symbol>().map_err(|e| Rich::custom(span, e)))
+        .labelled("symbol")
 }
 
 fn index<'a>() -> impl Parser<'a, &'a str, Index, Err<Rich<'a, char>>> {
-    text::int(10).try_map(|s: &str, span| s.parse::<Index>().map_err(|e| Rich::custom(span, e)))
+    text::int(10)
+        .try_map(|s: &str, span| s.parse::<Index>().map_err(|e| Rich::custom(span, e)))
+        .labelled("index")
 }
 
 #[cfg(test)]
