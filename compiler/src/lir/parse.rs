@@ -2,11 +2,8 @@ use super::{Arity, Block, Case, Global, Index, Name, Op, Program, Symbol};
 use chumsky::{extra::Err, prelude::*};
 use text::{ascii::ident, whitespace};
 
-pub fn parse(input: &str) -> Result<Program, String> {
-    program()
-        .parse(input)
-        .into_result()
-        .map_err(|errors| format!("{:?}", errors))
+pub fn parse(input: &str) -> Result<Program, Vec<Rich<char>>> {
+    program().parse(input).into_result()
 }
 
 fn program<'a>() -> impl Parser<'a, &'a str, Program, Err<Rich<'a, char>>> {
@@ -15,7 +12,6 @@ fn program<'a>() -> impl Parser<'a, &'a str, Program, Err<Rich<'a, char>>> {
         .collect::<Vec<Global>>()
         .padded()
         .map(globals_to_program)
-        .labelled("program")
 }
 
 fn globals_to_program(globals: Vec<Global>) -> Program {
@@ -65,8 +61,7 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
         let case = symbol()
             .then_ignore(whitespace())
             .then(block)
-            .map(|(symbol, block)| Case { symbol, block })
-            .labelled("case");
+            .map(|(symbol, block)| Case { symbol, block });
 
         let cases = case
             .separated_by(whitespace())
@@ -178,19 +173,19 @@ fn name<'a>() -> impl Parser<'a, &'a str, Name, Err<Rich<'a, char>>> {
 fn arity<'a>() -> impl Parser<'a, &'a str, Arity, Err<Rich<'a, char>>> {
     text::int(10)
         .try_map(|s: &str, span| s.parse::<Arity>().map_err(|e| Rich::custom(span, e)))
-        .labelled("arity")
+        .labelled("arity (16 bit integer)")
 }
 
 fn symbol<'a>() -> impl Parser<'a, &'a str, Symbol, Err<Rich<'a, char>>> {
     text::int(10)
         .try_map(|s: &str, span| s.parse::<Symbol>().map_err(|e| Rich::custom(span, e)))
-        .labelled("symbol")
+        .labelled("symbol (32 bit integer)")
 }
 
 fn index<'a>() -> impl Parser<'a, &'a str, Index, Err<Rich<'a, char>>> {
     text::int(10)
         .try_map(|s: &str, span| s.parse::<Index>().map_err(|e| Rich::custom(span, e)))
-        .labelled("index")
+        .labelled("index (64 bit integer)")
 }
 
 #[cfg(test)]
