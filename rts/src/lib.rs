@@ -133,6 +133,7 @@ mod test {
     use super::*;
     use std::ptr::null_mut;
 
+    #[allow(dead_code)]
     #[derive(Clone, Debug)]
     struct ShowTerm {
         fun: usize,
@@ -143,6 +144,7 @@ mod test {
         capacity: u16,
     }
 
+    #[allow(dead_code)]
     fn show_term(term: &Term) -> ShowTerm {
         let mut args = vec![];
         for i in 0..term.length as usize {
