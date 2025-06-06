@@ -39,7 +39,7 @@ fn main() {
             Ok(input) => input,
             Err(e) => {
                 eprintln!("Failed to read file: {}", e);
-                std::process::exit(2);
+                std::process::exit(1);
             }
         }
     };
@@ -58,7 +58,7 @@ fn main() {
                     .eprint((&input, Source::from(&input)))
                     .unwrap();
             }
-            std::process::exit(3);
+            std::process::exit(2);
         }
     };
 
