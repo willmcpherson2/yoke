@@ -197,7 +197,7 @@ impl Op {
     fn compile(&self, unit: &mut Unit) {
         match self {
             Op::LoadGlobal { name, global } => {
-                let global = unit.module.get_global(&global).unwrap();
+                let global = unit.module.get_global(global).unwrap();
                 let global = unit
                     .builder
                     .build_load(unit.term_type, global.as_pointer_value(), "")
@@ -208,7 +208,7 @@ impl Op {
                 unit.define(name.clone(), alloca);
             }
             Op::LoadArg { name, var, index } => {
-                let term = unit.lookup(&var);
+                let term = unit.lookup(var);
 
                 let term_load = unit
                     .builder
@@ -239,20 +239,20 @@ impl Op {
                 name,
                 var,
                 ref args,
-            } => unit.compile_apply_call(name.clone(), "new_app", &var, args),
+            } => unit.compile_apply_call(name.clone(), "new_app", var, args),
             Op::NewPartial {
                 name,
                 var,
                 ref args,
-            } => unit.compile_apply_call(name.clone(), "new_partial", &var, args),
+            } => unit.compile_apply_call(name.clone(), "new_partial", var, args),
             Op::ApplyPartial {
                 name,
                 var,
                 ref args,
-            } => unit.compile_apply_call(name.clone(), "apply_partial", &var, args),
+            } => unit.compile_apply_call(name.clone(), "apply_partial", var, args),
             Op::Copy { name, var } => {
                 let dest = unit.builder.build_alloca(unit.term_type, "").unwrap();
-                let src = unit.lookup(&var);
+                let src = unit.lookup(var);
                 let copy = unit.module.get_function("copy").unwrap();
                 unit.builder
                     .build_call(
@@ -268,7 +268,7 @@ impl Op {
                 unit.define(name.clone(), dest);
             }
             Op::Eval { name, var } => {
-                let term = unit.lookup(&var);
+                let term = unit.lookup(var);
                 let term_load = unit
                     .builder
                     .build_load(unit.term_type, term, "")
@@ -286,21 +286,21 @@ impl Op {
                 unit.define(name.clone(), term);
             }
             Op::FreeArgs { var } => {
-                let term = unit.lookup(&var);
+                let term = unit.lookup(var);
                 let free_args = unit.module.get_function("free_args").unwrap();
                 unit.builder
                     .build_call(free_args, &[BasicMetadataValueEnum::PointerValue(term)], "")
                     .unwrap();
             }
             Op::FreeTerm { var } => {
-                let term = unit.lookup(&var);
+                let term = unit.lookup(var);
                 let free_term = unit.module.get_function("free_term").unwrap();
                 unit.builder
                     .build_call(free_term, &[BasicMetadataValueEnum::PointerValue(term)], "")
                     .unwrap();
             }
             Op::ReturnSymbol { var } => {
-                let term = unit.lookup(&var);
+                let term = unit.lookup(var);
                 let term_load = unit
                     .builder
                     .build_load(unit.term_type, term, "")
@@ -310,7 +310,7 @@ impl Op {
                 unit.builder.build_return(Some(&symbol)).unwrap();
             }
             Op::Return { var } => {
-                let term = unit.lookup(&var);
+                let term = unit.lookup(var);
                 let term_load = unit.builder.build_load(unit.term_type, term, "").unwrap();
                 unit.builder
                     .build_store(unit.arg.unwrap(), term_load)
@@ -318,7 +318,7 @@ impl Op {
                 unit.builder.build_return(None).unwrap();
             }
             Op::Switch { var, ref cases } => {
-                let term = unit.lookup(&var);
+                let term = unit.lookup(var);
                 let term_load = unit
                     .builder
                     .build_load(unit.term_type, term, "")
