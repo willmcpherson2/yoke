@@ -37,5 +37,8 @@ fn main() {
     };
 
     let output = program.compile(lir::compile::Config::default());
-    println!("{:?}", output);
+    match output {
+        lir::compile::Output::ExitCode(n) => std::process::exit(n),
+        lir::compile::Output::Binary => {}
+    }
 }
