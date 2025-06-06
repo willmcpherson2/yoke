@@ -8,18 +8,39 @@ use clap::Parser;
 #[command(name = "yoke", version, about, long_about = None)]
 struct Args {
     /// File to compile
-    input_file: String,
+    input: String,
+
+    /// Interpret input as code instead of a filename
+    #[arg(short, long)]
+    code: bool,
+
+    /// Evaluate instead of compile
+    #[arg(short, long)]
+    eval: bool,
+
+    /// Optimization level
+    #[arg(
+        short = 'O',
+        long,
+        value_name = "LEVEL",
+        value_parser = clap::value_parser!(u8).range(0..=3),
+        default_value_t = 0,
+    )]
+    optimize: u8,
 }
 
 fn main() {
     let args = Args::parse();
 
-    let input_file = &args.input_file;
-    let input = match std::fs::read_to_string(input_file) {
-        Ok(input) => input,
-        Err(e) => {
-            eprintln!("Failed to read file: {}", e);
-            std::process::exit(2);
+    let input = if args.code {
+        args.input
+    } else {
+        match std::fs::read_to_string(args.input) {
+            Ok(input) => input,
+            Err(e) => {
+                eprintln!("Failed to read file: {}", e);
+                std::process::exit(2);
+            }
         }
     };
 
@@ -29,19 +50,34 @@ fn main() {
             for error in errors {
                 let range = error.span().into_range();
                 let reason = error.reason().to_string();
-                let label = Label::new((input_file, range.clone())).with_message(reason);
-                Report::build(ReportKind::Error, (input_file, range))
+                let label = Label::new((&input, range.clone())).with_message(reason);
+                Report::build(ReportKind::Error, (&input, range))
                     .with_message("Parse error")
                     .with_label(label)
                     .finish()
-                    .eprint((input_file, Source::from(&input)))
+                    .eprint((&input, Source::from(&input)))
                     .unwrap();
             }
             std::process::exit(3);
         }
     };
 
-    let output = program.compile(lir::compile::Config::default());
+    let config = lir::compile::Config {
+        mode: if args.eval {
+            lir::compile::Mode::Jit
+        } else {
+            lir::compile::Mode::Aot
+        },
+        opt_level: match args.optimize {
+            0 => lir::compile::OptLevel::O0,
+            1 => lir::compile::OptLevel::O1,
+            2 => lir::compile::OptLevel::O2,
+            3 => lir::compile::OptLevel::O3,
+            _ => panic!(),
+        },
+    };
+
+    let output = program.compile(config);
     match output {
         lir::compile::Output::ExitCode(n) => std::process::exit(n),
         lir::compile::Output::Binary => {}
