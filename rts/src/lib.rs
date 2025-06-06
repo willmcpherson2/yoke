@@ -1,3 +1,5 @@
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 use libc::{c_void, calloc, exit, free, malloc, write, STDERR_FILENO};
 use std::{
     mem::size_of,
