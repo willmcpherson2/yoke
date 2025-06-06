@@ -1,4 +1,4 @@
-use libc::{c_void, calloc, free, malloc};
+use libc::{c_void, calloc, exit, free, malloc, write, STDERR_FILENO};
 use std::{
     mem::size_of,
     ptr::{copy_nonoverlapping, null_mut},
@@ -97,6 +97,19 @@ pub extern "C" fn free_term(term: &mut Term) {
         free_term(term.arg_mut(i));
     }
     free_args(term);
+}
+
+#[no_mangle]
+pub extern "C" fn todo() {
+    let message = c"unhandled case\n";
+    unsafe {
+        write(
+            STDERR_FILENO,
+            message.as_ptr() as *const c_void,
+            message.count_bytes(),
+        );
+    }
+    unsafe { exit(1) };
 }
 
 fn alloc_terms(capacity: usize) -> *mut Term {

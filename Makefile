@@ -5,7 +5,7 @@ build:
 	cp target/release/deps/rts.bc target/rts.bc
 
 	opt \
-		--internalize-public-api-list="noop,new_app,new_partial,apply_partial,copy,free_args,free_term" \
+		--internalize-public-api-list="noop,new_app,new_partial,apply_partial,copy,free_args,free_term,todo" \
 		--passes="internalize,globaldce" \
 		target/rts.bc \
 		-o target/rts.bc

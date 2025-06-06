@@ -355,8 +355,9 @@ impl Op {
                     .build_switch(symbol, default_case, &cases)
                     .unwrap();
             }
-            Op::Abort => {
-                todo!()
+            Op::Todo => {
+                let todo = unit.module.get_function("todo").unwrap();
+                unit.builder.build_call(todo, &[], "").unwrap();
             }
         }
     }

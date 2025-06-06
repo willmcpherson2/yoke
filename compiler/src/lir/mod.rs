@@ -82,7 +82,7 @@ pub enum Op {
         var: Name,
         cases: Vec<Case>,
     },
-    Abort,
+    Todo,
 }
 
 #[derive(Debug, PartialEq)]

@@ -143,7 +143,7 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
                 .then_ignore(whitespace())
                 .then(cases)
                 .map(|((_, var), cases)| Op::Switch { var, cases }),
-            just("abort").map(|_| Op::Abort),
+            just("todo").map(|_| Op::Todo),
         ))
         .labelled("instruction");
 
