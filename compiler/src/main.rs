@@ -1,15 +1,20 @@
 mod lir;
 
 use ariadne::{Label, Report, ReportKind, Source};
+use clap::Parser;
+
+/// The Yoke compiler
+#[derive(Parser, Debug)]
+#[command(name = "yoke", version, about, long_about = None)]
+struct Args {
+    /// File to compile
+    input_file: String,
+}
 
 fn main() {
-    let args: Vec<String> = std::env::args().collect();
-    if args.len() < 2 {
-        eprintln!("Usage: {} <input_file>", args[0]);
-        std::process::exit(1);
-    }
+    let args = Args::parse();
 
-    let input_file = &args[1];
+    let input_file = &args.input_file;
     let input = match std::fs::read_to_string(input_file) {
         Ok(input) => input,
         Err(e) => {
