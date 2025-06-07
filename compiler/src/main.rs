@@ -1,6 +1,5 @@
 mod lir;
 
-use ariadne::{Label, Report, ReportKind, Source};
 use clap::Parser;
 
 /// The Yoke compiler
@@ -47,17 +46,7 @@ fn main() {
     let program = match lir::parse::parse(&input) {
         Ok(program) => program,
         Err(errors) => {
-            for error in errors {
-                let range = error.span().into_range();
-                let reason = error.reason().to_string();
-                let label = Label::new((&input, range.clone())).with_message(reason);
-                Report::build(ReportKind::Error, (&input, range))
-                    .with_message("Parse error")
-                    .with_label(label)
-                    .finish()
-                    .eprint((&input, Source::from(&input)))
-                    .unwrap();
-            }
+            lir::parse::print_parse_errors(&input, errors);
             std::process::exit(2);
         }
     };

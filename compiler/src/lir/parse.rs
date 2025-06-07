@@ -1,9 +1,24 @@
 use super::*;
+use ariadne::{Label, Report, ReportKind, Source};
 use chumsky::{extra::Err, prelude::*};
 use text::{ascii::ident, whitespace};
 
 pub fn parse(input: &str) -> Result<Program, Vec<Rich<char>>> {
     program().parse(input).into_result()
+}
+
+pub fn print_parse_errors(input: &str, errors: Vec<Rich<char>>) {
+    for error in errors {
+        let range = error.span().into_range();
+        let reason = error.reason().to_string();
+        let label = Label::new((&input, range.clone())).with_message(reason);
+        Report::build(ReportKind::Error, (&input, range))
+            .with_message("Parse error")
+            .with_label(label)
+            .finish()
+            .eprint((&input, Source::from(&input)))
+            .unwrap();
+    }
 }
 
 fn program<'a>() -> impl Parser<'a, &'a str, Program, Err<Rich<'a, char>>> {
