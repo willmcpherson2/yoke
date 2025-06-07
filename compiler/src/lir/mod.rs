@@ -29,8 +29,7 @@ pub enum Global {
     },
 }
 
-#[derive(Debug, PartialEq)]
-pub struct Block(pub Vec<Op>);
+pub type Block = Vec<Op>;
 
 #[derive(Debug, PartialEq)]
 pub enum Op {

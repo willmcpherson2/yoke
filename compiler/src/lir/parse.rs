@@ -1,4 +1,4 @@
-use super::{Arity, Block, Case, Global, Index, Name, Op, Program, Symbol};
+use super::*;
 use chumsky::{extra::Err, prelude::*};
 use text::{ascii::ident, whitespace};
 
@@ -17,7 +17,7 @@ fn program<'a>() -> impl Parser<'a, &'a str, Program, Err<Rich<'a, char>>> {
 fn globals_to_program(globals: Vec<Global>) -> Program {
     let mut program = Program {
         globals: vec![],
-        main: Block(vec![]),
+        main: vec![],
     };
 
     for global in globals {
@@ -151,7 +151,6 @@ fn block<'a>() -> impl Parser<'a, &'a str, Block, Err<Rich<'a, char>>> {
             .collect::<Vec<Op>>()
             .padded()
             .delimited_by(just('{'), just('}'))
-            .map(Block)
             .labelled("block")
             .boxed()
     })
@@ -199,7 +198,7 @@ mod test {
             result.unwrap(),
             Program {
                 globals: vec![],
-                main: Block(vec![]),
+                main: vec![],
             }
         );
     }
@@ -222,9 +221,9 @@ mod test {
             Global::Fun {
                 name: "f".to_string(),
                 arity: 1,
-                block: Block(vec![Op::Return {
+                block: vec![Op::Return {
                     var: "x".to_string()
-                }]),
+                }],
             }
         );
     }
@@ -234,9 +233,9 @@ mod test {
         let result = block().parse("{ return x }");
         assert_eq!(
             result.unwrap(),
-            Block(vec![Op::Return {
+            vec![Op::Return {
                 var: "x".to_string()
-            }])
+            }]
         );
 
         let result = block().parse(
@@ -253,23 +252,23 @@ mod test {
         );
         assert_eq!(
             result.unwrap(),
-            Block(vec![Op::Switch {
+            vec![Op::Switch {
                 var: "x".to_string(),
                 cases: vec![
                     Case {
                         symbol: 0,
-                        block: Block(vec![Op::Return {
+                        block: vec![Op::Return {
                             var: "a".to_string()
-                        },])
+                        },]
                     },
                     Case {
                         symbol: 1,
-                        block: Block(vec![Op::Return {
+                        block: vec![Op::Return {
                             var: "b".to_string()
-                        },])
+                        },]
                     },
                 ],
-            }])
+            }]
         );
     }
 }

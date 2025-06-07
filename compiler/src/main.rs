@@ -77,7 +77,7 @@ fn main() {
         },
     };
 
-    let output = program.compile(config);
+    let output = lir::compile::compile(&program, config);
     match output {
         lir::compile::Output::ExitCode(n) => std::process::exit(n),
         lir::compile::Output::Binary => {}
