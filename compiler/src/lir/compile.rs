@@ -97,12 +97,17 @@ pub fn compile(program: &Program, config: Config) -> Output {
         locals: Vec::new(),
     };
 
-    program
-        .globals
-        .iter()
-        .for_each(|global| compile_global(global, &mut unit));
+    program.iter().for_each(|(name, global)| {
+        if name != "main" {
+            define_const(name, global, &mut unit);
+        }
+    });
 
-    compile_main(&program.main, &mut unit);
+    program.iter().for_each(|(name, global)| match global {
+        Global::Fun { block, .. } if name == "main" => define_main(block, &mut unit),
+        Global::Fun { block, .. } => define_fun(name, block, &mut unit),
+        _ => {}
+    });
 
     opt(&unit);
 
@@ -135,7 +140,24 @@ struct Unit<'ctx> {
     locals: Vec<HashMap<Name, PointerValue<'ctx>>>,
 }
 
-fn compile_main(main: &Block, unit: &mut Unit) {
+fn define_const(name: &str, global: &Global, unit: &mut Unit) {
+    match global {
+        Global::Const { arity, symbol } => {
+            let noop = unit.module.get_function("noop").unwrap();
+            add_global(noop, format!("term_{name}"), *symbol, *arity, unit);
+        }
+        Global::Fun { arity, .. } => {
+            let fun = unit.module.add_function(
+                &format!("fun_{name}"),
+                unit.fun_type,
+                Some(Linkage::Internal),
+            );
+            add_global(fun, format!("term_{name}"), 0, *arity, unit);
+        }
+    }
+}
+
+fn define_main(main: &Block, unit: &mut Unit) {
     let main_fun_type = unit.context.i32_type().fn_type(&[], false);
     let fun = unit.module.add_function("main", main_fun_type, None);
     unit.fun = Some(fun);
@@ -150,38 +172,22 @@ fn compile_main(main: &Block, unit: &mut Unit) {
     compile_block(main, unit);
 }
 
-fn compile_global(global: &Global, unit: &mut Unit) {
-    match global {
-        Global::Const {
-            name,
-            arity,
-            symbol,
-        } => {
-            let noop = unit.module.get_function("noop").unwrap();
-            add_global(noop, name.clone(), *symbol, *arity, unit);
-        }
-        Global::Fun { name, arity, block } => {
-            let fun = unit
-                .module
-                .add_function("", unit.fun_type, Some(Linkage::Internal));
-            unit.fun = Some(fun);
+fn define_fun(name: &str, block: &Block, unit: &mut Unit) {
+    let fun = unit.module.get_function(&format!("fun_{name}")).unwrap();
+    unit.fun = Some(fun);
 
-            let basic_block = unit.context.append_basic_block(fun, "start");
-            unit.block = Some(basic_block);
-            unit.builder.position_at_end(basic_block);
+    let basic_block = unit.context.append_basic_block(fun, "start");
+    unit.block = Some(basic_block);
+    unit.builder.position_at_end(basic_block);
 
-            unit.clear_locals();
-            unit.add_scope();
+    unit.clear_locals();
+    unit.add_scope();
 
-            let arg = fun.get_first_param().unwrap().into_pointer_value();
-            unit.arg = Some(arg);
-            unit.define("self".to_string(), arg);
+    let arg = fun.get_first_param().unwrap().into_pointer_value();
+    unit.arg = Some(arg);
+    unit.define("self".to_string(), arg);
 
-            compile_block(block, unit);
-
-            add_global(fun, name.clone(), 0, *arity, unit);
-        }
-    }
+    compile_block(block, unit);
 }
 
 fn compile_block(block: &Block, unit: &mut Unit) {
@@ -191,7 +197,10 @@ fn compile_block(block: &Block, unit: &mut Unit) {
 fn compile_op(op: &Op, unit: &mut Unit) {
     match op {
         Op::LoadGlobal { name, global } => {
-            let global = unit.module.get_global(global).unwrap();
+            let global = unit
+                .module
+                .get_global(&format!("term_{}", &global))
+                .unwrap();
             let global = unit
                 .builder
                 .build_load(unit.term_type, global.as_pointer_value(), "")
@@ -486,22 +495,30 @@ mod test {
     #[test]
     fn test_return_symbol() {
         test!(
-            Program {
-                globals: vec![Global::Const {
-                    name: "True".to_string(),
-                    arity: 0,
-                    symbol: 1,
-                }],
-                main: vec![
-                    Op::LoadGlobal {
-                        name: "True".to_string(),
-                        global: "True".to_string(),
-                    },
-                    Op::ReturnSymbol {
-                        var: "True".to_string()
-                    },
-                ],
-            },
+            HashMap::from([
+                (
+                    "True".to_string(),
+                    Global::Const {
+                        arity: 0,
+                        symbol: 1,
+                    }
+                ),
+                (
+                    "main".to_string(),
+                    Global::Fun {
+                        arity: 0,
+                        block: vec![
+                            Op::LoadGlobal {
+                                name: "True".to_string(),
+                                global: "True".to_string(),
+                            },
+                            Op::ReturnSymbol {
+                                var: "True".to_string()
+                            },
+                        ]
+                    }
+                )
+            ]),
             1
         );
     }
@@ -509,29 +526,37 @@ mod test {
     #[test]
     fn test_copy() {
         test!(
-            Program {
-                globals: vec![Global::Const {
-                    name: "True".to_string(),
-                    arity: 0,
-                    symbol: 1,
-                }],
-                main: vec![
-                    Op::LoadGlobal {
-                        name: "True".to_string(),
-                        global: "True".to_string(),
+            HashMap::from([
+                (
+                    "True".to_string(),
+                    Global::Const {
+                        arity: 0,
+                        symbol: 1,
                     },
-                    Op::Copy {
-                        name: "x".to_string(),
-                        var: "True".to_string(),
-                    },
-                    Op::FreeTerm {
-                        var: "x".to_string()
-                    },
-                    Op::ReturnSymbol {
-                        var: "x".to_string()
-                    },
-                ],
-            },
+                ),
+                (
+                    "main".to_string(),
+                    Global::Fun {
+                        arity: 0,
+                        block: vec![
+                            Op::LoadGlobal {
+                                name: "True".to_string(),
+                                global: "True".to_string(),
+                            },
+                            Op::Copy {
+                                name: "x".to_string(),
+                                var: "True".to_string(),
+                            },
+                            Op::FreeTerm {
+                                var: "x".to_string()
+                            },
+                            Op::ReturnSymbol {
+                                var: "x".to_string()
+                            },
+                        ]
+                    }
+                )
+            ]),
             1
         );
     }
@@ -539,15 +564,17 @@ mod test {
     #[test]
     fn test_id() {
         test!(
-            Program {
-                globals: vec![
+            HashMap::from([
+                (
+                    "True".to_string(),
                     Global::Const {
-                        name: "True".to_string(),
                         arity: 0,
                         symbol: 1,
                     },
+                ),
+                (
+                    "id".to_string(),
                     Global::Fun {
-                        name: "id".to_string(),
                         arity: 1,
                         block: vec![
                             Op::LoadArg {
@@ -567,30 +594,36 @@ mod test {
                             },
                         ],
                     }
-                ],
-                main: vec![
-                    Op::LoadGlobal {
-                        name: "id".to_string(),
-                        global: "id".to_string(),
-                    },
-                    Op::LoadGlobal {
-                        name: "True".to_string(),
-                        global: "True".to_string(),
-                    },
-                    Op::NewApp {
-                        name: "result".to_string(),
-                        var: "id".to_string(),
-                        args: vec!["True".to_string()]
-                    },
-                    Op::Eval {
-                        name: "result".to_string(),
-                        var: "result".to_string(),
-                    },
-                    Op::ReturnSymbol {
-                        var: "result".to_string()
-                    },
-                ],
-            },
+                ),
+                (
+                    "main".to_string(),
+                    Global::Fun {
+                        arity: 0,
+                        block: vec![
+                            Op::LoadGlobal {
+                                name: "id".to_string(),
+                                global: "id".to_string(),
+                            },
+                            Op::LoadGlobal {
+                                name: "True".to_string(),
+                                global: "True".to_string(),
+                            },
+                            Op::NewApp {
+                                name: "result".to_string(),
+                                var: "id".to_string(),
+                                args: vec!["True".to_string()]
+                            },
+                            Op::Eval {
+                                name: "result".to_string(),
+                                var: "result".to_string(),
+                            },
+                            Op::ReturnSymbol {
+                                var: "result".to_string()
+                            },
+                        ],
+                    }
+                ),
+            ]),
             1
         );
     }
@@ -598,47 +631,55 @@ mod test {
     #[test]
     fn test_switch() {
         test!(
-            Program {
-                globals: vec![
+            HashMap::from([
+                (
+                    "True".to_string(),
                     Global::Const {
-                        name: "True".to_string(),
                         arity: 0,
                         symbol: 1,
                     },
+                ),
+                (
+                    "False".to_string(),
                     Global::Const {
-                        name: "False".to_string(),
                         arity: 0,
                         symbol: 2,
                     },
-                ],
-                main: vec![
-                    Op::LoadGlobal {
-                        name: "True".to_string(),
-                        global: "True".to_string(),
-                    },
-                    Op::LoadGlobal {
-                        name: "False".to_string(),
-                        global: "False".to_string(),
-                    },
-                    Op::Switch {
-                        var: "True".to_string(),
-                        cases: vec![
-                            Case {
-                                symbol: 1,
-                                block: vec![Op::ReturnSymbol {
-                                    var: "False".to_string()
-                                }]
+                ),
+                (
+                    "main".to_string(),
+                    Global::Fun {
+                        arity: 0,
+                        block: vec![
+                            Op::LoadGlobal {
+                                name: "True".to_string(),
+                                global: "True".to_string(),
                             },
-                            Case {
-                                symbol: 2,
-                                block: vec![Op::ReturnSymbol {
-                                    var: "True".to_string()
-                                }]
+                            Op::LoadGlobal {
+                                name: "False".to_string(),
+                                global: "False".to_string(),
+                            },
+                            Op::Switch {
+                                var: "True".to_string(),
+                                cases: vec![
+                                    Case {
+                                        symbol: 1,
+                                        block: vec![Op::ReturnSymbol {
+                                            var: "False".to_string()
+                                        }]
+                                    },
+                                    Case {
+                                        symbol: 2,
+                                        block: vec![Op::ReturnSymbol {
+                                            var: "True".to_string()
+                                        }]
+                                    },
+                                ],
                             },
                         ],
-                    },
-                ],
-            },
+                    }
+                ),
+            ]),
             2
         );
     }

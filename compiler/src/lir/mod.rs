@@ -1,6 +1,8 @@
 pub mod compile;
 pub mod parse;
 
+pub use std::collections::HashMap;
+
 pub type Name = String;
 
 pub type Symbol = u32;
@@ -9,24 +11,12 @@ pub type Arity = u16;
 
 pub type Index = u64;
 
-#[derive(Debug, PartialEq)]
-pub struct Program {
-    pub globals: Vec<Global>,
-    pub main: Block,
-}
+pub type Program = HashMap<String, Global>;
 
 #[derive(Debug, PartialEq)]
 pub enum Global {
-    Const {
-        name: Name,
-        arity: Arity,
-        symbol: Symbol,
-    },
-    Fun {
-        name: Name,
-        arity: Arity,
-        block: Block,
-    },
+    Const { arity: Arity, symbol: Symbol },
+    Fun { arity: Arity, block: Block },
 }
 
 pub type Block = Vec<Op>;

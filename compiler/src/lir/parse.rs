@@ -24,28 +24,12 @@ pub fn print_parse_errors(input: &str, errors: Vec<Rich<char>>) {
 fn program<'a>() -> impl Parser<'a, &'a str, Program, Err<Rich<'a, char>>> {
     global()
         .separated_by(whitespace())
-        .collect::<Vec<Global>>()
+        .collect::<Vec<(String, Global)>>()
         .padded()
-        .map(globals_to_program)
+        .map(|globals| globals.into_iter().collect::<HashMap<String, Global>>())
 }
 
-fn globals_to_program(globals: Vec<Global>) -> Program {
-    let mut program = Program {
-        globals: vec![],
-        main: vec![],
-    };
-
-    for global in globals {
-        match global {
-            Global::Fun { name, block, .. } if name == "main" => program.main = block,
-            _ => program.globals.push(global),
-        }
-    }
-
-    program
-}
-
-fn global<'a>() -> impl Parser<'a, &'a str, Global, Err<Rich<'a, char>>> {
+fn global<'a>() -> impl Parser<'a, &'a str, (String, Global), Err<Rich<'a, char>>> {
     choice((
         just("const")
             .then_ignore(whitespace())
@@ -54,11 +38,7 @@ fn global<'a>() -> impl Parser<'a, &'a str, Global, Err<Rich<'a, char>>> {
             .then(arity())
             .then_ignore(whitespace())
             .then(symbol())
-            .map(|(((_, name), arity), symbol)| Global::Const {
-                name,
-                arity,
-                symbol,
-            }),
+            .map(|(((_, name), arity), symbol)| (name, Global::Const { arity, symbol })),
         just("fun")
             .then_ignore(whitespace())
             .then(name())
@@ -66,7 +46,7 @@ fn global<'a>() -> impl Parser<'a, &'a str, Global, Err<Rich<'a, char>>> {
             .then(arity())
             .then_ignore(whitespace())
             .then(block())
-            .map(|(((_, name), arity), block)| Global::Fun { name, arity, block }),
+            .map(|(((_, name), arity), block)| (name, Global::Fun { arity, block })),
     ))
     .labelled("global")
 }
@@ -211,10 +191,13 @@ mod test {
         let result = program().parse("fun main 0 {}");
         assert_eq!(
             result.unwrap(),
-            Program {
-                globals: vec![],
-                main: vec![],
-            }
+            HashMap::from([(
+                "main".to_string(),
+                Global::Fun {
+                    arity: 0,
+                    block: vec![],
+                }
+            )])
         );
     }
 
@@ -223,23 +206,27 @@ mod test {
         let result = global().parse("const True 0 1");
         assert_eq!(
             result.unwrap(),
-            Global::Const {
-                name: "True".to_string(),
-                arity: 0,
-                symbol: 1
-            }
+            (
+                "True".to_string(),
+                Global::Const {
+                    arity: 0,
+                    symbol: 1
+                }
+            )
         );
 
         let result = global().parse("fun f 1 { return x }");
         assert_eq!(
             result.unwrap(),
-            Global::Fun {
-                name: "f".to_string(),
-                arity: 1,
-                block: vec![Op::Return {
-                    var: "x".to_string()
-                }],
-            }
+            (
+                "f".to_string(),
+                Global::Fun {
+                    arity: 1,
+                    block: vec![Op::Return {
+                        var: "x".to_string()
+                    }],
+                }
+            )
         );
     }
 
