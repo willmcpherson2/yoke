@@ -31,11 +31,11 @@ struct Args {
 fn main() {
     let args = Args::parse();
 
-    let input = if args.code {
-        args.input
+    let (file, input) = if args.code {
+        ("<cli>", args.input)
     } else {
-        match std::fs::read_to_string(args.input) {
-            Ok(input) => input,
+        match std::fs::read_to_string(&args.input) {
+            Ok(input) => (args.input.as_str(), input),
             Err(e) => {
                 eprintln!("Failed to read file: {}", e);
                 std::process::exit(1);
@@ -46,7 +46,7 @@ fn main() {
     let program = match lir::parse::parse(&input) {
         Ok(program) => program,
         Err(errors) => {
-            lir::parse::print_parse_errors(&input, errors);
+            lir::parse::print_parse_errors(file, &input, errors);
             std::process::exit(2);
         }
     };

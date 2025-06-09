@@ -1,0 +1,69 @@
+use crate::lir::*;
+use std::str::FromStr;
+use lalrpop_util::ParseError;
+
+grammar;
+
+pub Program: Program = {
+    <globals:Global*> => globals.into_iter().collect::<Program>(),
+}
+
+Global: (String, Global) = {
+    "const" <name:Name> <arity:Arity> <symbol:Symbol> => (name, Global::Const { arity, symbol }),
+    "fun" <name:Name> <arity:Arity> <block:Block> => (name, Global::Fun { arity, block }),
+}
+
+Block: Block = {
+    "{" <ops:Op*> "}" => ops,
+}
+
+Op: Op = {
+    "load_global" <name:Name> <global:Name> => Op::LoadGlobal { name, global },
+    "load_arg" <name:Name> <var:Name> <index:Index> => Op::LoadArg { name, var, index },
+    "new_app" <name:Name> <var:Name> "{" <args:Name*> "}" => Op::NewApp { name, var, args },
+    "new_partial" <name:Name> <var:Name> "{" <args:Name*> "}" => Op::NewPartial { name, var, args },
+    "apply_partial" <name:Name> <var:Name> "{" <args:Name*> "}" => Op::ApplyPartial { name, var, args },
+    "copy" <name:Name> <var:Name> => Op::Copy { name, var },
+    "eval" <name:Name> <var:Name> => Op::Eval { name, var },
+    "free_args" <var:Name> => Op::FreeArgs { var },
+    "free_term" <var:Name> => Op::FreeTerm { var },
+    "return_symbol" <var:Name> => Op::ReturnSymbol { var },
+    "return" <var:Name> => Op::Return { var },
+    "switch" <var:Name> "{" <cases:Case*> "}" => Op::Switch { var, cases },
+    "todo" => Op::Todo,
+}
+
+Case: Case = {
+    <symbol:Symbol> <block:Block> => Case { symbol, block },
+}
+
+Index: Index = {
+    <start: @L> <n:r"\d+"> <end: @R> =>? Index::from_str(n).map_err(|_| {
+        ParseError::UnrecognizedToken {
+            token: (start, Token(start, n), end),
+            expected: vec!["index (64 bit integer)".to_string()],
+        }
+    }),
+}
+
+Symbol: Symbol = {
+    <start: @L> <n:r"\d+"> <end: @R> =>? Symbol::from_str(n).map_err(|_| {
+        ParseError::UnrecognizedToken {
+            token: (start, Token(start, n), end),
+            expected: vec!["symbol (32 bit integer)".to_string()],
+        }
+    }),
+}
+
+Arity: Arity = {
+    <start: @L> <n:r"\d+"> <end: @R> =>? Arity::from_str(n).map_err(|_| {
+        ParseError::UnrecognizedToken {
+            token: (start, Token(start, n), end),
+            expected: vec!["arity (16 bit integer)".to_string()],
+        }
+    }),
+}
+
+Name: Name = {
+    <s:r"[a-zA-Z_]\w*"> => s.to_string(),
+}
