@@ -19,11 +19,11 @@ Block: Block = {
 
 Op: Op = {
     "load_global" <global:Name> => Op::LoadGlobal { global },
-    "load_arg" <name:Name> <var:Name> <index:Index> => Op::LoadArg { name, var, index },
-    "new_app" <name:Name> <var:Name> "{" <args:Name*> "}" => Op::NewApp { name, var, args },
-    "new_partial" <name:Name> <var:Name> "{" <args:Name*> "}" => Op::NewPartial { name, var, args },
-    "apply_partial" <name:Name> <var:Name> "{" <args:Name*> "}" => Op::ApplyPartial { name, var, args },
-    "copy" <name:Name> <var:Name> => Op::Copy { name, var },
+    <name:Name> "=" "load_arg" <var:Name> <index:Index> => Op::LoadArg { name, var, index },
+    <name:Name> "=" "new_app" <var:Name> "{" <args:Name*> "}" => Op::NewApp { name, var, args },
+    <name:Name> "=" "new_partial" <var:Name> "{" <args:Name*> "}" => Op::NewPartial { name, var, args },
+    <name:Name> "=" "apply_partial" <var:Name> "{" <args:Name*> "}" => Op::ApplyPartial { name, var, args },
+    <name:Name> "=" "copy" <var:Name> => Op::Copy { name, var },
     "eval" <var:Name> => Op::Eval { var },
     "free_args" <var:Name> => Op::FreeArgs { var },
     "free_term" <var:Name> => Op::FreeTerm { var },
