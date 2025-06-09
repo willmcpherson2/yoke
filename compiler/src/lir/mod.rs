@@ -24,7 +24,6 @@ pub type Block = Vec<Op>;
 #[derive(Debug, PartialEq)]
 pub enum Op {
     LoadGlobal {
-        name: Name,
         global: Name,
     },
     LoadArg {
@@ -52,7 +51,6 @@ pub enum Op {
         var: Name,
     },
     Eval {
-        name: Name,
         var: Name,
     },
     FreeArgs {

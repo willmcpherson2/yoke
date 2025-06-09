@@ -196,19 +196,19 @@ fn compile_block(block: &Block, unit: &mut Unit) {
 
 fn compile_op(op: &Op, unit: &mut Unit) {
     match op {
-        Op::LoadGlobal { name, global } => {
-            let global = unit
+        Op::LoadGlobal { global } => {
+            let global_value = unit
                 .module
                 .get_global(&format!("term_{}", &global))
                 .unwrap();
-            let global = unit
+            let global_load = unit
                 .builder
-                .build_load(unit.term_type, global.as_pointer_value(), "")
+                .build_load(unit.term_type, global_value.as_pointer_value(), "")
                 .unwrap();
             let alloca = unit.builder.build_alloca(unit.term_type, "").unwrap();
-            unit.builder.build_store(alloca, global).unwrap();
+            unit.builder.build_store(alloca, global_load).unwrap();
 
-            unit.define(name.clone(), alloca);
+            unit.define(global.clone(), alloca);
         }
         Op::LoadArg { name, var, index } => {
             let term = unit.lookup(var);
@@ -270,7 +270,7 @@ fn compile_op(op: &Op, unit: &mut Unit) {
 
             unit.define(name.clone(), dest);
         }
-        Op::Eval { name, var } => {
+        Op::Eval { var } => {
             let term = unit.lookup(var);
             let term_load = unit
                 .builder
@@ -285,8 +285,6 @@ fn compile_op(op: &Op, unit: &mut Unit) {
             unit.builder
                 .build_indirect_call(unit.fun_type, fun, &[term.into()], "")
                 .unwrap();
-
-            unit.define(name.clone(), term);
         }
         Op::FreeArgs { var } => {
             let term = unit.lookup(var);
@@ -509,7 +507,6 @@ mod test {
                         arity: 0,
                         block: vec![
                             Op::LoadGlobal {
-                                name: "True".to_string(),
                                 global: "True".to_string(),
                             },
                             Op::ReturnSymbol {
@@ -540,7 +537,6 @@ mod test {
                         arity: 0,
                         block: vec![
                             Op::LoadGlobal {
-                                name: "True".to_string(),
                                 global: "True".to_string(),
                             },
                             Op::Copy {
@@ -586,7 +582,6 @@ mod test {
                                 var: "self".to_string()
                             },
                             Op::Eval {
-                                name: "x".to_string(),
                                 var: "x".to_string(),
                             },
                             Op::Return {
@@ -601,11 +596,9 @@ mod test {
                         arity: 0,
                         block: vec![
                             Op::LoadGlobal {
-                                name: "id".to_string(),
                                 global: "id".to_string(),
                             },
                             Op::LoadGlobal {
-                                name: "True".to_string(),
                                 global: "True".to_string(),
                             },
                             Op::NewApp {
@@ -614,7 +607,6 @@ mod test {
                                 args: vec!["True".to_string()]
                             },
                             Op::Eval {
-                                name: "result".to_string(),
                                 var: "result".to_string(),
                             },
                             Op::ReturnSymbol {
@@ -652,11 +644,9 @@ mod test {
                         arity: 0,
                         block: vec![
                             Op::LoadGlobal {
-                                name: "True".to_string(),
                                 global: "True".to_string(),
                             },
                             Op::LoadGlobal {
-                                name: "False".to_string(),
                                 global: "False".to_string(),
                             },
                             Op::Switch {
