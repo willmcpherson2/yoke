@@ -29,8 +29,10 @@ struct Args {
 }
 
 fn main() {
-    let args = Args::parse();
+    std::process::exit(compile(Args::parse()));
+}
 
+fn compile(args: Args) -> i32 {
     let (file, input) = if args.code {
         ("<cli>", args.input)
     } else {
@@ -38,7 +40,7 @@ fn main() {
             Ok(input) => (args.input.as_str(), input),
             Err(e) => {
                 eprintln!("Failed to read file: {}", e);
-                std::process::exit(1);
+                return 1;
             }
         }
     };
@@ -47,7 +49,7 @@ fn main() {
         Ok(program) => program,
         Err(errors) => {
             lir::parse::print_parse_errors(file, &input, errors);
-            std::process::exit(2);
+            return 2;
         }
     };
 
@@ -68,7 +70,26 @@ fn main() {
 
     let output = lir::compile::compile(&program, config);
     match output {
-        lir::compile::Output::ExitCode(n) => std::process::exit(n),
-        lir::compile::Output::Binary => {}
+        lir::compile::Output::ExitCode(n) => n,
+        lir::compile::Output::Binary => 0,
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn test_map_not_maybe_bool() {
+        println!("Current dir: {:?}", std::env::current_dir().unwrap());
+        assert_eq!(
+            compile(Args {
+                input: "../examples/map-not-maybe-bool.lir".to_string(),
+                code: false,
+                eval: true,
+                optimize: 0,
+            }),
+            10
+        );
     }
 }

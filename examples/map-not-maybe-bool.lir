@@ -1,0 +1,76 @@
+False = 0 10
+
+True = 0 20
+
+Nothing = 0 30
+
+Just = 1 40
+
+main = 0 {
+  load_global Just
+  load_global True
+  just = new_app Just { True }
+
+  load_global not
+  not = new_partial not {}
+
+  load_global map
+  maybe = new_app map { not just }
+
+  load_global unwrap
+  bool = new_app unwrap { maybe }
+
+  eval bool
+  return_symbol bool
+}
+
+not = 1 {
+  bool = load_arg self 0
+  eval bool
+  switch bool {
+    False {
+      load_global True
+      return True
+    }
+    True {
+      load_global False
+      return False
+    }
+  }
+}
+
+unwrap = 1 {
+  maybe = load_arg self 0
+  eval maybe
+  switch maybe {
+    Nothing {
+      todo
+    }
+    Just {
+      x = load_arg maybe 0
+      eval x
+      return x
+    }
+  }
+}
+
+map = 2 {
+  maybe = load_arg self 1
+  eval maybe
+  switch maybe {
+    Nothing {
+      load_global Nothing
+      return Nothing
+    }
+    Just {
+      f = load_arg self 0
+      x = load_arg maybe 0
+      applied = apply_partial f { x }
+
+      load_global Just
+      just = new_app Just { applied }
+
+      return just
+    }
+  }
+}
