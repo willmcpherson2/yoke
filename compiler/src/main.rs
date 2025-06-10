@@ -81,7 +81,6 @@ mod test {
 
     #[test]
     fn test_map_not_maybe_bool() {
-        println!("Current dir: {:?}", std::env::current_dir().unwrap());
         assert_eq!(
             compile(Args {
                 input: "../examples/map-not-maybe-bool.lir".to_string(),
