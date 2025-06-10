@@ -66,7 +66,7 @@ mod test {
     #[test]
     fn test_program() {
         assert_eq!(
-            parse("fun main 0 {}").unwrap(),
+            parse("main = 0 {}").unwrap(),
             HashMap::from([(
                 "main".to_string(),
                 Global::Fun {
@@ -77,7 +77,7 @@ mod test {
         );
 
         assert_eq!(
-            parse("const True 0 1").unwrap(),
+            parse("True = 0 1").unwrap(),
             HashMap::from([((
                 "True".to_string(),
                 Global::Const {
@@ -88,7 +88,7 @@ mod test {
         );
 
         assert_eq!(
-            parse("fun f 1 { return x }").unwrap(),
+            parse("f = 1 { return x }").unwrap(),
             HashMap::from([((
                 "f".to_string(),
                 Global::Fun {
