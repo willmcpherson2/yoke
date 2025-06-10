@@ -480,7 +480,7 @@ impl<'ctx> Unit<'ctx> {
 
     fn print(&self) {
         let s = self.module.print_to_string().to_string();
-        println!("{}", s);
+        eprintln!("{}", s);
     }
 }
 
