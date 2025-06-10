@@ -9,11 +9,11 @@ use std::{
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 pub struct Term {
-    fun: extern "C" fn(*mut Term),
-    args: *mut Term,
-    symbol: u32,
-    length: u16,
-    capacity: u16,
+    pub fun: extern "C" fn(*mut Term),
+    pub args: *mut Term,
+    pub symbol: u32,
+    pub length: u16,
+    pub capacity: u16,
 }
 
 impl Term {
