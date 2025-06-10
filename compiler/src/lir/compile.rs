@@ -85,6 +85,7 @@ pub fn compile(program: &Program, config: Config) -> Output {
 
     let mut unit = Unit {
         config,
+        program,
         machine,
         context: &context,
         module,
@@ -128,6 +129,7 @@ pub fn compile(program: &Program, config: Config) -> Output {
 #[derive(Debug)]
 struct Unit<'ctx> {
     config: Config,
+    program: &'ctx Program,
     machine: TargetMachine,
     context: &'ctx Context,
     module: Module<'ctx>,
@@ -336,7 +338,11 @@ fn compile_op(op: &Op, unit: &mut Unit) {
             let cases = cases
                 .iter()
                 .map(|case| {
-                    let symbol = unit.context.i32_type().const_int(case.symbol.into(), false);
+                    let Global::Const { symbol, .. } = unit.program.get(&case.global).unwrap()
+                    else {
+                        panic!()
+                    };
+                    let symbol = unit.context.i32_type().const_int(*symbol as u64, false);
                     let block = unit.context.append_basic_block(unit.fun.unwrap(), "");
                     unit.builder.position_at_end(block);
                     unit.clear_scope();
@@ -653,13 +659,13 @@ mod test {
                                 var: "True".to_string(),
                                 cases: vec![
                                     Case {
-                                        symbol: 1,
+                                        global: "True".to_string(),
                                         block: vec![Op::ReturnSymbol {
                                             var: "False".to_string()
                                         }]
                                     },
                                     Case {
-                                        symbol: 2,
+                                        global: "False".to_string(),
                                         block: vec![Op::ReturnSymbol {
                                             var: "True".to_string()
                                         }]

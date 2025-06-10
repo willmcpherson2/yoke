@@ -74,6 +74,6 @@ pub enum Op {
 
 #[derive(Debug, PartialEq)]
 pub struct Case {
-    pub symbol: Symbol,
+    pub global: Name,
     pub block: Block,
 }

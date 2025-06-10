@@ -34,7 +34,7 @@ Op: Op = {
 }
 
 Case: Case = {
-    <symbol:Symbol> <block:Block> => Case { symbol, block },
+    <global:Name> <block:Block> => Case { global, block },
 }
 
 Index: Index = {
