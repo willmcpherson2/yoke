@@ -144,7 +144,7 @@ struct Unit<'ctx> {
 
 fn define_const(name: &str, global: &Global, unit: &mut Unit) {
     match global {
-        Global::Const { arity, symbol } => {
+        Global::Ctor { arity, symbol } => {
             let noop = unit.module.get_function("noop").unwrap();
             add_global(noop, format!("term_{name}"), *symbol, *arity, unit);
         }
@@ -338,7 +338,7 @@ fn compile_op(op: &Op, unit: &mut Unit) {
             let cases = cases
                 .iter()
                 .map(|case| {
-                    let Global::Const { symbol, .. } = unit.program.get(&case.global).unwrap()
+                    let Global::Ctor { symbol, .. } = unit.program.get(&case.global).unwrap()
                     else {
                         panic!()
                     };
@@ -503,7 +503,7 @@ mod test {
             HashMap::from([
                 (
                     "True".to_string(),
-                    Global::Const {
+                    Global::Ctor {
                         arity: 0,
                         symbol: 1,
                     }
@@ -533,7 +533,7 @@ mod test {
             HashMap::from([
                 (
                     "True".to_string(),
-                    Global::Const {
+                    Global::Ctor {
                         arity: 0,
                         symbol: 1,
                     },
@@ -570,7 +570,7 @@ mod test {
             HashMap::from([
                 (
                     "True".to_string(),
-                    Global::Const {
+                    Global::Ctor {
                         arity: 0,
                         symbol: 1,
                     },
@@ -633,14 +633,14 @@ mod test {
             HashMap::from([
                 (
                     "True".to_string(),
-                    Global::Const {
+                    Global::Ctor {
                         arity: 0,
                         symbol: 1,
                     },
                 ),
                 (
                     "False".to_string(),
-                    Global::Const {
+                    Global::Ctor {
                         arity: 0,
                         symbol: 2,
                     },

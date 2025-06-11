@@ -15,7 +15,7 @@ pub type Program = HashMap<String, Global>;
 
 #[derive(Debug, PartialEq)]
 pub enum Global {
-    Const { arity: Arity, symbol: Symbol },
+    Ctor { arity: Arity, symbol: Symbol },
     Fun { arity: Arity, block: Block },
 }
 

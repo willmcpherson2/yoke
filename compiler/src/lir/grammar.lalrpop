@@ -9,7 +9,7 @@ pub Program: Program = {
 }
 
 Global: (String, Global) = {
-    <name:Name> "=" <arity:Arity> <symbol:Symbol> => (name, Global::Const { arity, symbol }),
+    <name:Name> "=" <arity:Arity> <symbol:Symbol> => (name, Global::Ctor { arity, symbol }),
     <name:Name> "=" <arity:Arity> <block:Block> => (name, Global::Fun { arity, block }),
 }
 

@@ -80,7 +80,7 @@ mod test {
             parse("True = 0 1").unwrap(),
             HashMap::from([((
                 "True".to_string(),
-                Global::Const {
+                Global::Ctor {
                     arity: 0,
                     symbol: 1
                 }
