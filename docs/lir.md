@@ -141,6 +141,8 @@ name = copy local
 
 The `copy` instruction performs a deep copy of a term and stores it as a local variable.
 
+This instruction allocates.
+
 ### eval
 
 ```
