@@ -365,7 +365,7 @@ fn compile_op(op: &Op, unit: &mut Unit) {
         Op::Todo => {
             let todo = unit.module.get_function("todo").unwrap();
             unit.builder.build_call(todo, &[], "").unwrap();
-            unit.builder.build_return(None).unwrap();
+            unit.builder.build_unreachable().unwrap();
         }
     }
 }
