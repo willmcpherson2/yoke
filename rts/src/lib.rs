@@ -111,7 +111,7 @@ pub extern "C" fn todo() {
             message.count_bytes(),
         );
     }
-    unsafe { exit(1) };
+    unsafe { exit(3) };
 }
 
 fn alloc_terms(capacity: usize) -> *mut Term {
