@@ -1,4 +1,6 @@
 mod lir;
+mod mir;
+mod report;
 
 use clap::Parser;
 
@@ -48,7 +50,7 @@ fn compile(args: Args) -> i32 {
     let program = match lir::parse::parse(&input) {
         Ok(program) => program,
         Err(errors) => {
-            lir::parse::print_parse_errors(file, &input, errors);
+            report::print_parse_errors(file, &input, errors);
             return 2;
         }
     };

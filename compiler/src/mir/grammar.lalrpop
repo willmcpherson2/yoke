@@ -1,0 +1,56 @@
+use crate::mir::*;
+
+grammar;
+
+pub Program: Program = {
+    <defs:Def*> => defs.into_iter().collect::<Program>(),
+}
+
+Def: (String, Switch) = {
+    <name:Var> "=" <switch:Switch> ";" => (name, switch),
+}
+
+Switch: Switch = {
+    <case:Case> <mut cases:("|" <Case>)*> => {
+        cases.insert(0, case);
+        cases
+    },
+}
+
+Case: Case = {
+    <pat:Pat> <mut pats:("," <Pat>)*> "->" <term:Term> => {
+        pats.insert(0, pat);
+        Case(pats, term)
+    },
+}
+
+Pat: Pat = {
+    PatAtom,
+    <sym:Sym> <pats:PatAtom+> => Pat::Ctor(sym, pats),
+}
+
+PatAtom: Pat = {
+    "(" <Pat> ")",
+    <var:Var> => Pat::Var(var),
+    <sym:Sym> => Pat::Ctor(sym, vec![]),
+}
+
+Term: Term = {
+    TermAtom,
+    <var:Var> <terms:TermAtom+> => Term::App(var, terms),
+    <sym:Sym> <terms:TermAtom+> => Term::Ctor(sym, terms),
+}
+
+TermAtom: Term = {
+    "(" <Term> ")",
+    <var:Var> => Term::Var(var),
+    <sym:Sym> => Term::Ctor(sym, vec![]),
+}
+
+Var: String = {
+    r"[a-z_]\w*" => <>.to_string(),
+}
+
+Sym: String = {
+    r"[A-Z]\w*" => <>.to_string(),
+}
